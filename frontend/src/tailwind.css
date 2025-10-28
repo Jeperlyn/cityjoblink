@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Primary Colors */
+    --primary-background: #5bd2f0;
+    --primary-foreground: #000000;
+    --primary-light: #5bd3f1;
+    --primary-dark: #373737;
+
+    /* Secondary Colors */
+    --secondary-background: #ffffff;
+    --secondary-foreground: #000000;
+    --secondary-light: #d9d9d9;
+    --secondary-dark: #979797;
+
+    /* Text Colors */
+    --text-primary: #000000;
+    --text-secondary: #ffffff;
+    --text-muted: #979797;
+
+    /* Background Colors */
+    --bg-main: #ffffff;
+    --bg-dark: #000000;
+    --bg-accent: #5bd2f0;
+    --bg-neutral: #d9d9d9;
+
+    /* Component Colors */
+    --header-bg: #000000;
+    --button-bg: #5bd2f0;
+    --button-text: #000000;
+    --line-bg-primary: #979797;
+    --line-bg-secondary: #ffffff;
+
+    /* Typography Variables */
+    --font-size-lg: 24px;
+    --font-size-xl: 25px;
+    --font-size-2xl: 27px;
+    --font-size-3xl: 35px;
+    --font-size-4xl: 36px;
+    --font-size-5xl: 45px;
+    --font-size-6xl: 64px;
+
+    /* Font Weight Variables */
+    --font-weight-normal: 400;
+
+    /* Line Height Variables */
+    --line-height-tight: 30px;
+    --line-height-snug: 34px;
+    --line-height-normal: 44px;
+    --line-height-relaxed: 45px;
+    --line-height-loose: 46px;
+    --line-height-extra: 56px;
+    --line-height-super: 57px;
+    --line-height-max: 100px;
+
+    /* Spacing Variables */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 14px;
+    --spacing-xl: 16px;
+    --spacing-2xl: 24px;
+    --spacing-3xl: 30px;
+    --spacing-4xl: 32px;
+    --spacing-5xl: 38px;
+    --spacing-6xl: 188px;
+    --spacing-7xl: 194px;
+    --spacing-8xl: 342px;
+    --spacing-9xl: 458px;
+    --spacing-10xl: 494px;
+    --spacing-11xl: 536px;
+    --spacing-12xl: 542px;
+
+    /* Padding Variables */
+    --padding-xs: 4px;
+    --padding-sm: 6px;
+    --padding-md: 16px;
+    --padding-lg: 20px;
+    --padding-xl: 24px;
+    --padding-2xl: 26px;
+    --padding-3xl: 32px;
+
+    /* Gap Variables */
+    --gap-sm: 14px;
+    --gap-md: 24px;
+    --gap-xl: 98px;
+
+    /* Border Radius Variables */
+    --radius-sm: 6px;
+    --radius-md: 8px;
+
+    /* Width Variables */
+    --width-xs: 3px;
+    --width-sm: 12px;
+    --width-md: 140px;
+    --width-10: 10%;
+    --width-20: 20%;
+    --width-26: 26%;
+    --width-48: 48%;
+    --width-60: 60%;
+    --width-78: 78%;
+    --width-98: 98%;
+    --width-full: 100%;
+    --width-auto: auto;
+    --width-flex: flex-1;
+  }
+}
