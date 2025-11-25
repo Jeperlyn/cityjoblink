@@ -1,8 +1,8 @@
 // src/components/Navbar.jsx
 import React from 'react';
-import { Building2, Mail, LogOut } from 'lucide-react';
+import { Building2, Mail, LogOut, Bell } from 'lucide-react'; 
 
-const Navbar = ({ user, onLogout, onNavigate, messages, currentView }) => {
+const Navbar = ({ user, onLogout, onNavigate, messages, unreadNotifs, currentView }) => {
   const unreadMsgs = messages ? messages.filter(m => m.toId === user?.id && !m.read).length : 0;
 
   const handleDashboardClick = () => {
@@ -36,12 +36,17 @@ const Navbar = ({ user, onLogout, onNavigate, messages, currentView }) => {
           </>
         )}
         {!user ? (
-          // BUTTON FIXED: Ensures clicking this navigates to login screen
           <button onClick={() => onNavigate('login')} className="text-white bg-cyan-600 hover:bg-cyan-700 px-4 py-2 rounded-md font-bold transition-colors">Login / Sign Up</button>
         ) : (
           <>
             <button onClick={handleDashboardClick} className={getLinkClass('dashboard')}>Dashboard</button>
             <div className="flex items-center gap-4 pl-4 border-l border-gray-700">
+              
+              <button onClick={() => onNavigate('notifications')} className={`relative hover:text-white ${currentView === 'notifications' ? 'text-white' : 'text-gray-400'}`}>
+                <Bell size={20} />
+                {unreadNotifs > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">{unreadNotifs}</span>}
+              </button>
+
               <button onClick={() => onNavigate('messages')} className={`relative hover:text-white ${currentView === 'messages' ? 'text-white' : 'text-gray-400'}`}>
                 <Mail size={20} />
                 {unreadMsgs > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">{unreadMsgs}</span>}

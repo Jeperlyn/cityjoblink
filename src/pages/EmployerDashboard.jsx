@@ -1,8 +1,8 @@
 // src/pages/EmployerDashboard.jsx
 import React, { useState } from 'react';
-import { Edit3, User, X, FileText, ChevronUp, ChevronDown } from 'lucide-react';
+import { Edit3, User, X, FileText, ChevronUp, ChevronDown, MessageCircle, AlertCircle } from 'lucide-react'; 
 
-const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, onUpdateJob, onUpdateProfile, onUploadDocs, onSendMessage, onUpdateStatus }) => {
+const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, onUpdateJob, onUpdateProfile, onUploadDocs, onOpenChat, onUpdateStatus }) => {
   const [view, setView] = useState('dashboard');
   const [newJob, setNewJob] = useState({ title: '', salary: '', location: '', type: 'Full-time', requiredSkills: '', description: '' });
   const [hasFileToUpload, setHasFileToUpload] = useState(false);
@@ -13,11 +13,28 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
   const myJobs = jobs.filter(j => j.employerId === profile.id);
 
   const handlePostJob = () => {
-     const skills = newJob.requiredSkills.split(',').map(s => s.trim());
+     // FIX: Filter out empty skills
+     const skills = newJob.requiredSkills.split(',').map(s => s.trim()).filter(s => s !== ""); 
+
      if (editingJob) {
-         onUpdateJob({...newJob, id: editingJob.id, requiredSkills: skills, employerId: profile.id, status: editingJob.status});
+         onUpdateJob({
+             ...newJob, 
+             id: editingJob.id, 
+             requiredSkills: skills, 
+             employerId: profile.id, 
+             company: profile.companyName, // FIX: Save Company Name
+             status: editingJob.status
+         });
      } else {
-         onPostJob({...newJob, id: Date.now(), requiredSkills: skills, employerId: profile.id, posted: 'Just now', status: 'Open'});
+         onPostJob({
+             ...newJob, 
+             id: Date.now(), 
+             requiredSkills: skills, 
+             employerId: profile.id, 
+             company: profile.companyName, // FIX: Save Company Name
+             posted: 'Just now', 
+             status: 'Open'
+         });
      }
      setView('dashboard');
      setEditingJob(null);
@@ -28,6 +45,10 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
       setNewJob({...job, requiredSkills: job.requiredSkills.join(', ')});
       setEditingJob(job);
       setView('post');
+  };
+
+  const handleMessageClick = (seeker) => {
+      onOpenChat(seeker.id);
   };
 
   return (
@@ -59,7 +80,80 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                </div>
              </div>
              {expandedJob === j.id && <div className="mt-4 pt-4 border-t text-sm text-gray-600"><p className="font-bold mb-1">Description:</p>{j.description}</div>}
-             <div className="mt-3 border-t pt-3"><h4 className="font-bold text-xs text-gray-500 uppercase">Applicants</h4>{applications.filter(a=>a.jobId===j.id).map(a => { const s = seekers.find(u=>u.id===a.seekerId); return <div key={a.id} className="flex justify-between items-center bg-gray-50 p-2 mt-1 rounded border"><div className="flex items-center gap-2"><User size={16}/><span className="font-bold text-sm">{s?.name}</span></div><div className="flex gap-2"><button onClick={()=>setViewApplicant(s)} className="text-xs border px-2 py-1 rounded bg-white">View Resume</button><select className="text-xs border rounded p-1" value={a.status} onChange={(e)=>onUpdateStatus(a.id, e.target.value)}><option>Pending</option><option>Viewing</option><option>Interview</option><option>Hired</option><option>Rejected</option></select></div></div> })}</div>
+             
+             <div className="mt-3 border-t pt-3"><h4 className="font-bold text-xs text-gray-500 uppercase mb-2">Applicants</h4>
+                {applications.filter(a=>a.jobId===j.id).length === 0 ? <p className="text-xs text-gray-400 italic">No applicants yet.</p> : 
+                 applications.filter(a=>a.jobId===j.id).map(a => { 
+                    const s = seekers.find(u=>u.id===a.seekerId); 
+                    const isCancelled = a.status === 'Cancelled';
+
+                    return (
+                        <div key={a.id} className={`flex flex-col gap-2 p-3 mt-2 rounded border transition-colors ${isCancelled ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-gray-50 border-gray-200'}`}>
+                            <div className="flex flex-wrap justify-between items-center gap-2">
+                                <div className="flex items-center gap-2">
+                                    <div className={`p-1 rounded-full ${isCancelled ? 'bg-gray-300 text-gray-500' : 'bg-blue-100 text-blue-600'}`}>
+                                        {isCancelled ? <AlertCircle size={16}/> : <User size={16}/>}
+                                    </div>
+                                    <div>
+                                        <span className={`font-bold text-sm ${isCancelled ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{s?.name}</span>
+                                        {isCancelled && <span className="text-xs text-red-500 font-bold ml-2">(Withdrew Application)</span>}
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2 items-center">
+                                    <button 
+                                        onClick={() => !isCancelled && handleMessageClick(s)} 
+                                        disabled={isCancelled}
+                                        title="Chat" 
+                                        className={`p-1 rounded ${isCancelled ? 'text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-100'}`}
+                                    >
+                                        <MessageCircle size={18}/>
+                                    </button>
+
+                                    <button 
+                                        onClick={()=> !isCancelled && setViewApplicant(s)} 
+                                        disabled={isCancelled}
+                                        className={`text-xs border px-2 py-1 rounded ${isCancelled ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white hover:bg-gray-50'}`}
+                                    >
+                                        View Resume
+                                    </button>
+                                    
+                                    <select 
+                                        className={`text-xs border rounded p-1 ${isCancelled ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-white'}`}
+                                        value={a.status} 
+                                        disabled={isCancelled}
+                                        onChange={(e)=>{
+                                            const newStatus = e.target.value;
+                                            let reason = "";
+                                            if (newStatus === 'Rejected') {
+                                                reason = prompt("Please state the reason for rejection:");
+                                                if (reason === null) return; 
+                                            }
+                                            onUpdateStatus(a.id, newStatus, reason);
+                                        }}
+                                    >
+                                        {isCancelled ? <option>Cancelled</option> : (
+                                            <>
+                                                <option>Pending</option>
+                                                <option>Viewing</option>
+                                                <option>Interview</option>
+                                                <option>Hired</option>
+                                                <option>Rejected</option>
+                                            </>
+                                        )}
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            {isCancelled && a.cancellationReason && (
+                                <div className="text-xs text-gray-500 bg-white p-2 rounded border border-gray-200">
+                                    <span className="font-bold">Reason for withdrawal:</span> {a.cancellationReason}
+                                </div>
+                            )}
+                        </div>
+                    ) 
+                })}
+             </div>
           </div>))}</div>
        )}
 
