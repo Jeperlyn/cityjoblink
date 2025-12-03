@@ -1,5 +1,6 @@
 // src/App.jsx
 import React, { useState, useEffect, useRef } from 'react'; 
+import emailjs from '@emailjs/browser'; // ✅ ADDED: EmailJS Import
 // ✅ ADDED: Icons for Modals
 import { ChevronLeft, Send, MessageCircle, User, Reply, AlertCircle, FileText, X, LogIn, AlertTriangle, CheckCircle } from 'lucide-react'; 
 
@@ -21,7 +22,8 @@ import {
   INITIAL_APPLICATIONS, 
   INITIAL_MESSAGES, 
   INITIAL_NOTIFICATIONS, 
-  calculateMatchScore 
+  calculateMatchScore,
+  INITIAL_USERS // ✅ Ensure this is imported
 } from './data/mockData';
 
 // Helper: Time Ago
@@ -207,7 +209,8 @@ const App = () => {
   const [appIdToCancel, setAppIdToCancel] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
   
-  const [users, setUsers] = useState(() => JSON.parse(localStorage.getItem('cjl_users')) || [ADMIN_ACCOUNT]);
+  // ✅ FIX: Load INITIAL_USERS correctly so hr@telco.ph works
+  const [users, setUsers] = useState(() => JSON.parse(localStorage.getItem('cjl_users')) || INITIAL_USERS);
   const [jobs, setJobs] = useState(() => JSON.parse(localStorage.getItem('cjl_jobs')) || INITIAL_JOBS);
   const [applications, setApplications] = useState(() => JSON.parse(localStorage.getItem('cjl_applications')) || INITIAL_APPLICATIONS);
   const [messages, setMessages] = useState(() => JSON.parse(localStorage.getItem('cjl_messages')) || INITIAL_MESSAGES);
@@ -223,6 +226,45 @@ const App = () => {
   useEffect(() => { localStorage.setItem('cjl_notifications', JSON.stringify(notifications)); }, [notifications]);
   useEffect(() => { localStorage.setItem('cjl_messages', JSON.stringify(messages)); }, [messages]);
   useEffect(() => { localStorage.setItem('cjl_jobfairs', JSON.stringify(jobFairs)); }, [jobFairs]); 
+
+  // --- ✅ ADDED: AUTOMATED EMAIL FUNCTION ---
+  const sendAutomatedEmail = (seekerEmail, seekerName, jobTitle, status, companyName, reason) => {
+    // 1. Determine Subject & Message based on status
+    let subject = `Update on your application: ${status}`;
+    let message = `Hello ${seekerName},\n\nYour application for ${jobTitle} at ${companyName} has been updated to: ${status}.`;
+
+    if (status === 'Hired') {
+        subject = `Congratulations! You are Hired for ${jobTitle}`;
+        message = `Dear ${seekerName},\n\nCongratulations! We are pleased to inform you that you have been HIRED for the ${jobTitle} position at ${companyName}.\n\nPlease report to our office for the next steps.`;
+    } else if (status === 'Interview') {
+        subject = `Interview Invitation: ${jobTitle}`;
+        message = `Dear ${seekerName},\n\nWe are impressed with your application! ${companyName} would like to invite you for an interview for the ${jobTitle} position.\n\nPlease check your CityJobLink dashboard for details.`;
+    } else if (status === 'Rejected') {
+        message = `Dear ${seekerName},\n\nThank you for your interest in ${companyName}. Unfortunately, we have decided not to proceed with your application for ${jobTitle} at this time.\n\nReason: ${reason || 'Not specified'}`;
+    }
+
+    const templateParams = {
+        to_email: seekerEmail,
+        to_name: seekerName,
+        from_name: companyName,
+        subject: subject,
+        message: message
+    };
+
+    // 2. Send via EmailJS
+    emailjs.send(
+        'service_n4c8dmq',      // Your Service ID
+        'template_scnzurg',     // Your Template ID
+        templateParams,
+        'i5z0CxEmLkBbQVES-'     // Your Public Key
+    ).then((response) => {
+        console.log('SUCCESS! Email sent.', response.status, response.text);
+        alert(`📧 Email notification successfully sent to ${seekerEmail}!`);
+    }, (error) => {
+        console.log('FAILED to send email...', error);
+        alert('Failed to send email notification. Check console for details.');
+    });
+  };
 
   const handleNavigate = (view) => {
     if (view === 'notifications') {
@@ -343,27 +385,34 @@ const App = () => {
       setJobFairs([fairWithId, ...jobFairs]);
   };
 
-  // ✅ UPDATED: Removed alerts
   const handleVerifyEmployer = (empId, isApproved) => {
      if (isApproved) {
         setUsers(users.map(u => u.id === empId ? { ...u, isVerified: true } : u));
         setNotifications(prev => [{ id: Date.now(), toId: empId, content: "Your account has been VERIFIED by Admin. You can now post jobs.", read: false, date: Date.now() }, ...prev]);
-        // Alert removed - handled by AdminDashboard Modal
      } else {
         setUsers(users.map(u => u.id === empId ? { ...u, uploadedDocs: false } : u));
         setNotifications(prev => [{ id: Date.now(), toId: empId, content: "Your verification was REJECTED. Please re-upload valid documents.", read: false, date: Date.now() }, ...prev]);
-        // Alert removed - handled by AdminDashboard Modal
      }
   };
 
+  // ✅ UPDATED: EMAIL TRIGGER ADDED HERE
   const handleUpdateAppStatus = (appId, newStatus, reason) => {
      setApplications(applications.map(a => a.id === appId ? { ...a, status: newStatus, rejectionReason: reason } : a));
+     
      const app = applications.find(a => a.id === appId);
      if (app) {
         const job = jobs.find(j => j.id === app.jobId);
+        
+        // 1. In-App Notification
         let content = `Update: Your application for ${job.title} is now ${newStatus}.`;
         if (newStatus === 'Rejected' && reason) content += ` Reason: "${reason}"`;
         setNotifications(prev => [{ id: Date.now(), toId: app.seekerId, content, read: false, date: Date.now() }, ...prev]);
+
+        // 2. ✅ TRIGGER EMAIL TO SEEKER
+        const seeker = users.find(u => u.id === app.seekerId);
+        if (seeker && job && ['Interview', 'Hired', 'Rejected'].includes(newStatus)) {
+            sendAutomatedEmail(seeker.email, seeker.name, job.title, newStatus, job.company, reason);
+        }
      }
   };
 
@@ -389,7 +438,7 @@ const App = () => {
         onViewJob={(j) => handleViewJobDetails(j, 'seeker-dash')}
         onCancelApplication={initiateCancelApp} 
         onNavigate={setCurrentView} 
-     />;
+      />;
      
      if (currentView === 'employer-dash') return <EmployerDashboard 
         profile={user} 
@@ -403,13 +452,10 @@ const App = () => {
         }} 
         onUpdateJob={updated => setJobs(jobs.map(j => j.id === updated.id ? updated : j))} 
         onUpdateProfile={handleUpdateProfile} 
-        
-        // ✅ FIX: Removed alert("Request Sent") - handled by EmployerDashboard Modal
         onUploadDocs={(id) => {handleUpdateProfile({...user, uploadedDocs:true}); }} 
-        
         onOpenChat={handleOpenChat} 
         onUpdateStatus={handleUpdateAppStatus} 
-     />;
+      />;
 
      if (currentView === 'admin-dash') return <AdminDashboard employers={users.filter(u => u.role === 'Employer')} onVerifyEmployer={handleVerifyEmployer} jobFairs={jobFairs} onAddJobFair={handleAddJobFair} />;
      if (currentView === 'matchmaker') return <MatchmakerSearch jobs={jobs} userProfile={user} onApply={handleApply} onJobClick={(j) => handleViewJobDetails(j, 'matchmaker')} />;

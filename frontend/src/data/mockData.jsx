@@ -1,27 +1,50 @@
-// src/data/mockData.jsx
-
 export const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 export const YEARS = Array.from({length: 50}, (_, i) => new Date().getFullYear() - i);
 
-// Updated Match Score Logic
+// Match Score Logic
 export const calculateMatchScore = (jobSkills, userSkills) => {
   const safeSkills = userSkills || [];
-  
-  // Remove empty skills
   const cleanJobSkills = (jobSkills || []).filter(s => s && s.trim() !== "");
-
-  // If no requirements, 0% match
   if (!cleanJobSkills || cleanJobSkills.length === 0) return { score: 0, matches: [] };
-
   const matches = cleanJobSkills.filter(skill => 
       safeSkills.some(us => us.toLowerCase().includes(skill.toLowerCase()))
   );
-
   const score = Math.round((matches.length / cleanJobSkills.length) * 100);
   return { score, matches };
 };
 
 export const ADMIN_ACCOUNT = { id: 999, name: "PESO Admin", email: "admin@peso.gov.ph", role: "Admin", password: "admin" };
+
+// ✅ FIXED: Added ADMIN_ACCOUNT inside this list so you can log in
+export const INITIAL_USERS = [
+  ADMIN_ACCOUNT, // <--- This was missing!
+
+  {
+    id: 101, 
+    name: "Telco HR",
+    companyName: "Telco Ph",
+    email: "hr@telco.ph",
+    password: "123",
+    role: "Employer",
+    isVerified: true, 
+    uploadedDocs: true
+  },
+  {
+    id: 201,
+    email: "chymechrsprdo@gmail.com", 
+    password: "123",
+    role: "Seeker",
+    name: "Juan Dela Cruz",
+    isVerified: true,
+    skills: ["Customer Service", "English Proficiency"],
+    education: [],
+    experience: [],
+    licenses: [],
+    languages: [],
+    uploadedDocs: false,
+    resumeFile: "mock-resume.pdf"
+  }
+];
 
 export const INITIAL_JOBS = [
   {
@@ -35,7 +58,7 @@ export const INITIAL_JOBS = [
     posted: "2 days ago",
     requiredSkills: ["Customer Service", "English Proficiency", "Management", "Problem Solving"],
     employerId: 101,
-    description: "We are looking for an experienced Customer Service Manager to provide excellent customer service and to promote this idea throughout the organization.",
+    description: "We are looking for an experienced Customer Service Manager...",
     status: "Open"
   },
   {
@@ -81,7 +104,7 @@ export const INITIAL_JOB_FAIRS = [
     date: "Dec 05, 2025", 
     time: "8:00 AM - 5:00 PM",
     organizer: "PESO QC & DOLE", 
-    description: "Join the largest local job fair featuring over 50 registered companies across various industries including BPO, IT, Retail, and Manufacturing.", 
+    description: "Join the largest local job fair...", 
     participants: [],
     image: "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=1000&auto=format&fit=crop", 
     highlights: ["On-the-spot Hiring", "Free Resume Printing", "Career Coaching"],
@@ -94,7 +117,7 @@ export const INITIAL_JOB_FAIRS = [
     date: "Jan 15, 2026", 
     time: "10:00 AM - 6:00 PM",
     organizer: "TechPH", 
-    description: "Looking for a career in Tech? Meet the biggest startups and BPO companies in the country.", 
+    description: "Looking for a career in Tech?...", 
     participants: [],
     image: "https://images.unsplash.com/photo-1544531586-fde5298cdd40?q=80&w=1000&auto=format&fit=crop",
     highlights: ["Tech Talks", "Coding Challenges", "Networking"],
@@ -102,7 +125,15 @@ export const INITIAL_JOB_FAIRS = [
   }
 ];
 
-export const INITIAL_APPLICATIONS = []; 
+export const INITIAL_APPLICATIONS = [
+  { 
+    id: 999, 
+    jobId: 1,
+    seekerId: 201,
+    status: 'Pending', 
+    date: '12/03/2025' 
+  }
+]; 
 
 export const INITIAL_MESSAGES = [
   { id: 1, fromId: 0, toId: 201, senderName: "CityJobLink Bot", content: "Welcome to CityJobLink! Complete your profile to get matched.", date: "System", read: false }
