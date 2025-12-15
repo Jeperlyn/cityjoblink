@@ -12,10 +12,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            // DITO NATIN ILALAGAY ANG MGA BAGONG COLUMNS:
-            $table->string('role')->default('Seeker'); // Example: 'Admin', 'Employer', 'Seeker'
-            $table->string('qc_id')->nullable();       // Para sa QCitizen ID
-            $table->string('industry')->nullable();    // Para sa Employer Industry
+            // Check if columns exist before adding them to avoid duplication errors
+            if (!Schema::hasColumn('users', 'id_image')) {
+                $table->string('id_image')->nullable()->after('email');
+            }
+
+            if (!Schema::hasColumn('users', 'is_verified')) {
+                $table->boolean('is_verified')->default(false)->after('id_image');
+            }
         });
     }
 
@@ -25,8 +29,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            // ITO NAMAN ANG MAGBUBURA PAG NAG-ROLLBACK TAYO:
-            $table->dropColumn(['role', 'qc_id', 'industry']);
+            $table->dropColumn(['id_image', 'is_verified']);
         });
     }
 };

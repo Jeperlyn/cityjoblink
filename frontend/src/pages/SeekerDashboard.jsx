@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useRef } from 'react';
-import { Edit3, Trash2, X, FileText, UploadCloud, Plus, ChevronLeft, Search, Filter, Star, CheckCircle, XCircle, Calendar, Clock, MapPin, Ticket, Printer } from 'lucide-react';
+// src/pages/SeekerDashboard.jsx
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+// ✅ FIXED IMPORTS: Calendar, Clock, MapPin are essential for Job Fairs tab
+import { Edit3, Trash2, X, FileText, UploadCloud, ChevronLeft, Search, Filter, Star, CheckCircle, XCircle, Calendar, Clock, MapPin, Ticket, Printer, User, Smile } from 'lucide-react';
 import { calculateMatchScore } from '../data/mockData';
 
 // --- 1. MATCHMAKER SEARCH (Cards) ---
@@ -169,10 +171,7 @@ export const JobDetailsPage = ({ job, matchData, onBack, onApply, application, o
                  {canCancel && (
                      <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">
                          <button 
-                            onClick={() => {
-                                const reason = prompt("Reason for cancellation:");
-                                if(reason) onCancel(application.id, reason);
-                            }}
+                            onClick={() => onCancel(application.id)}
                             className="text-sm font-bold text-gray-500 hover:text-red-600 transition-colors flex items-center gap-1"
                          >
                             <Trash2 size={14}/> Withdraw Application
@@ -220,28 +219,60 @@ export const JobDetailsPage = ({ job, matchData, onBack, onApply, application, o
 };
 
 // --- 3. SEEKER DASHBOARD (Main) ---
-const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, onUpdateProfile, onUpdateTrainings, onReviewCompany, onViewJob, onCancelApplication, onNavigate }) => {
-  const [activeTab, setActiveTab] = useState('overview');
+const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, initialTab, onUpdateProfile, onUpdateTrainings, onReviewCompany, onViewJob, onCancelApplication, onNavigate }) => {
+  const [activeTab, setActiveTab] = useState(initialTab || 'overview');
+  const [showUploadModal, setShowUploadModal] = useState(false);
+
+  useEffect(() => {
+    if (initialTab) {
+        setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
   const [modalType, setModalType] = useState(null);
   const [tempInput, setTempInput] = useState({});
   const [selectedTicket, setSelectedTicket] = useState(null);
 
-  // 1. UseRef para sa File Upload (Integration)
   const fileInputRef = useRef(null);
 
   const myTrainings = trainings.filter(t => t.registeredUsers.includes(profile.id));
   const myFairs = jobFairs.filter(f => f.participants.includes(profile.id));
 
-  // 2. Handle File Selection Logic
+  // ✅ HELPER: Process Birthday from Laravel (YYYY-MM-DD) or React Components
+  const getFormattedBirthday = () => {
+    if (profile.birthdate) {
+        // Handle "2005-01-21" from Laravel
+        const date = new Date(profile.birthdate);
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+    if (profile.bdayMonth && profile.bdayDay && profile.bdayYear) {
+        return `${profile.bdayMonth} ${profile.bdayDay}, ${profile.bdayYear}`;
+    }
+    return "Not specified";
+  };
+
+  const formattedBirthday = getFormattedBirthday();
+
+  // ✅ UPDATED: File Upload Logic (Converts to Base64)
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      onUpdateProfile({
-        ...profile, 
-        resumeFile: file.name, 
-        resumeType: 'uploaded'
-      });
-      alert(`Resume uploaded successfully: ${file.name}`);
+      if (file.size > 2 * 1024 * 1024) {
+          alert("File is too large! Please upload a file smaller than 2MB.");
+          return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        onUpdateProfile({
+          ...profile, 
+          resumeFile: file.name, 
+          resumeType: 'uploaded',
+          resumeData: reader.result 
+        });
+        setShowUploadModal(true);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -253,7 +284,6 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, onU
   return (
     <div className="max-w-6xl mx-auto p-6">
       
-      {/* Hidden Input Element for Upload */}
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -281,7 +311,6 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, onU
         ))}
       </div>
       
-      {/* TAB: OVERVIEW */}
       {activeTab === 'overview' && (
         <div className="bg-white p-6 rounded-xl shadow-sm border">
             <h3 className="font-bold text-lg mb-4">Applications</h3>
@@ -322,12 +351,7 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, onU
 
                             {canCancel && (
                                 <button 
-                                    onClick={() => {
-                                        const reason = prompt("Why do you want to cancel this application?");
-                                        if (reason) {
-                                            onCancelApplication(app.id, reason);
-                                        }
-                                    }}
+                                    onClick={() => onCancelApplication(app.id)}
                                     className="text-xs text-red-600 hover:text-red-800 hover:underline font-medium"
                                 >
                                     Cancel Application
@@ -342,16 +366,47 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, onU
         </div>
       )}
 
-      {/* TAB: PROFILE & RESUME (FINAL CLEAN UI) */}
       {activeTab === 'profile & resume' && (
          <div className="space-y-6">
             
-            {/* RESUME SECTION (Status Card) */}
+            {/* ✅ PERSONAL INFORMATION SECTION (Corrected for Laravel Data) */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-gray-900">
+                    <User className="text-cyan-600"/> Personal Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <p className="text-gray-500 text-xs font-bold uppercase mb-1">Full Name</p>
+                        <p className="font-bold text-gray-900">{profile.name}</p>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <p className="text-gray-500 text-xs font-bold uppercase mb-1">QCitizen ID</p>
+                        {/* ✅ FIX: Reads profile.qc_id (Laravel) OR profile.qcId (React) */}
+                        <p className="font-bold text-gray-900">{profile.qc_id || profile.qcId || "N/A"}</p>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Clock size={14} className="text-gray-400"/>
+                            <p className="text-gray-500 text-xs font-bold uppercase">Birthday</p>
+                        </div>
+                        {/* ✅ FIX: Uses helper function to handle both date formats */}
+                        <p className="font-bold text-gray-900">{formattedBirthday}</p>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Smile size={14} className="text-gray-400"/>
+                            <p className="text-gray-500 text-xs font-bold uppercase">Gender</p>
+                        </div>
+                        <p className="font-bold text-gray-900">{profile.gender || "Not specified"}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* EXISTING RESUME SECTION */}
             <div className="bg-white p-6 rounded-xl shadow-sm border">
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                     <FileText className="text-cyan-600"/> Current Resume
                 </h3>
-                
                 {profile.resumeFile ? (
                     <div className="flex items-center justify-between bg-green-50 p-4 rounded-lg border border-green-200">
                         <div className="flex items-center gap-4">
@@ -378,7 +433,7 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, onU
                 )}
             </div>
 
-            {/* BUILDER PROMO (With Navigation) */}
+            {/* EXISTING BUILDER PROMO */}
             <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl shadow-lg text-white p-8 flex flex-col md:flex-row items-center justify-between gap-6">
                 <div>
                     <h3 className="text-2xl font-bold mb-2">Don't have a resume?</h3>
@@ -457,6 +512,24 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, onU
           </div>
         </div>
       )}
+
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100 animate-in zoom-in duration-200">
+                <div className="bg-green-50 p-6 flex flex-col items-center text-center border-b border-green-100">
+                    <div className="p-4 bg-green-100 text-green-600 rounded-full mb-4">
+                        <CheckCircle size={40} />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900">Resume Uploaded!</h3>
+                    <p className="text-sm text-gray-600 mt-2">Your resume has been successfully attached to your profile.</p>
+                </div>
+                <div className="p-6">
+                    <button onClick={() => setShowUploadModal(false)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition-colors shadow-lg">Great</button>
+                </div>
+            </div>
+        </div>
+      )}
+
     </div>
   );
 };

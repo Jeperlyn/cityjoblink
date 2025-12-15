@@ -12,56 +12,67 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // 1. ADMIN ACCOUNT (Yung gusto mong email)
-        User::create([
-            'name' => 'PESO Admin',
-            'email' => 'admin@peso.gov.ph', // Ito na ang gamitin natin
-            'password' => Hash::make('admin'), // Password: 'admin'
-            'role' => 'Admin',
-        ]);
+        // Using firstOrCreate to prevent "Duplicate Entry" errors if you run seed twice
+        User::firstOrCreate(
+            ['email' => 'admin@peso.gov.ph'],
+            [
+                'name' => 'PESO Admin',
+                'password' => Hash::make('admin'), // Password: 'admin'
+                'role' => 'Admin',
+            ]
+        );
 
         // Backup Admin (Optional)
-        User::create([
-            'name' => 'Super Admin',
-            'email' => 'admin@gmail.com',
-            'password' => Hash::make('password'),
-            'role' => 'Admin',
-        ]);
+        User::firstOrCreate(
+            ['email' => 'admin@gmail.com'],
+            [
+                'name' => 'Super Admin',
+                'password' => Hash::make('password'),
+                'role' => 'Admin',
+            ]
+        );
 
         // 2. EMPLOYER ACCOUNT
-        User::create([
-            'name' => 'Telco Solutions Inc.',
-            'email' => 'employer@gmail.com',
-            'password' => Hash::make('password'),
-            'role' => 'Employer',
-            'industry' => 'BPO / Call Center',
-        ]);
+        User::firstOrCreate(
+            ['email' => 'employer@gmail.com'],
+            [
+                'name' => 'Telco Solutions Inc.',
+                'password' => Hash::make('password'),
+                'role' => 'Employer',
+                'industry' => 'BPO / Call Center',
+            ]
+        );
 
         // 3. JOB SEEKER ACCOUNT
-        User::create([
-            'name' => 'Juan Dela Cruz',
-            'email' => 'juan@gmail.com',
-            'password' => Hash::make('password'),
-            'role' => 'Seeker',
-            'qc_id' => 'QC-12345678',
-        ]);
+        User::firstOrCreate(
+            ['email' => 'juan@gmail.com'],
+            [
+                'name' => 'Juan Dela Cruz',
+                'password' => Hash::make('password'),
+                'role' => 'Seeker',
+                'qc_id' => 'QC-12345678',
+            ]
+        );
 
-        // 4. SAMPLE JOBS (Galing sa mockData mo dati)
-        Job::create([
-            'title' => 'Customer Service Manager',
-            'company' => 'Telco Solutions Inc.',
-            'location' => 'Quezon City, District 1',
-            'salary' => '₱25k - ₱35k',
-            'type' => 'Full-time',
-            'description' => 'We are looking for an experienced Customer Service Manager to provide excellent customer service.',
-        ]);
+        // 4. SAMPLE JOBS (Only runs if Job model exists)
+        if (class_exists(Job::class)) {
+            Job::create([
+                'title' => 'Customer Service Manager',
+                'company' => 'Telco Solutions Inc.',
+                'location' => 'Quezon City, District 1',
+                'salary' => '₱25k - ₱35k',
+                'type' => 'Full-time',
+                'description' => 'We are looking for an experienced Customer Service Manager to provide excellent customer service.',
+            ]);
 
-        Job::create([
-            'title' => 'Administrative Assistant',
-            'company' => 'QC Local Government',
-            'location' => 'Quezon City Hall',
-            'salary' => '₱18k - ₱22k',
-            'type' => 'Contract',
-            'description' => 'Responsible for handling clerical tasks in our office.',
-        ]);
+            Job::create([
+                'title' => 'Administrative Assistant',
+                'company' => 'QC Local Government',
+                'location' => 'Quezon City Hall',
+                'salary' => '₱18k - ₱22k',
+                'type' => 'Contract',
+                'description' => 'Responsible for handling clerical tasks in our office.',
+            ]);
+        }
     }
 }
