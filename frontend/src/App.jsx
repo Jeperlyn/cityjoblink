@@ -1,8 +1,6 @@
-// src/App.jsx
-import React, { useState, useEffect, useRef } from 'react'; 
-import emailjs from '@emailjs/browser'; // ✅ ADDED: EmailJS Import
-// ✅ ADDED: Icons for Modals
-import { ChevronLeft, Send, MessageCircle, User, Reply, AlertCircle, FileText, X, LogIn, AlertTriangle, CheckCircle } from 'lucide-react'; 
+import React, { useState, useEffect, useRef, useMemo } from 'react'; 
+import { ChevronLeft, Send, MessageCircle, User, AlertCircle, FileText, X, LogIn, AlertTriangle, CheckCircle } from 'lucide-react'; 
+import emailjs from '@emailjs/browser'; 
 
 // Import Components
 import Navbar from './components/Navbar';
@@ -23,7 +21,7 @@ import {
   INITIAL_MESSAGES, 
   INITIAL_NOTIFICATIONS, 
   calculateMatchScore,
-  INITIAL_USERS // ✅ Ensure this is imported
+  INITIAL_USERS 
 } from './data/mockData';
 
 // Helper: Time Ago
@@ -50,7 +48,7 @@ const MessagesPanel = ({ messages, user, users, onBack, onSendMessage, onRead, i
     if (initialChatId) {
         onRead(initialChatId);
     }
-  }, [initialChatId]);
+  }, [initialChatId, onRead]);
 
   const contacts = Array.from(new Set(
       messages
@@ -69,13 +67,15 @@ const MessagesPanel = ({ messages, user, users, onBack, onSendMessage, onRead, i
       };
   });
 
-  const activeMessages = activeChatId 
-      ? messages.filter(m => (m.fromId === user.id && m.toId === activeChatId) || (m.fromId === activeChatId && m.toId === user.id)).sort((a,b) => a.id - b.id)
-      : [];
+  const activeMessages = useMemo(() => {
+      return activeChatId 
+          ? messages.filter(m => (m.fromId === user.id && m.toId === activeChatId) || (m.fromId === activeChatId && m.toId === user.id)).sort((a,b) => a.id - b.id)
+          : [];
+  }, [messages, activeChatId, user.id]);
 
   useEffect(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeMessages, activeChatId]);
+  }, [activeMessages]);
 
   const handleSend = (e) => {
       e.preventDefault();
@@ -199,17 +199,6 @@ const App = () => {
   // TAB STATE
   const [seekerActiveTab, setSeekerActiveTab] = useState('overview'); 
 
-  // ✅ MODAL STATES
-  const [showResumeModal, setShowResumeModal] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false); 
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false); 
-
-  // Cancel Modal Logic States
-  const [appIdToCancel, setAppIdToCancel] = useState(null);
-  const [cancelReason, setCancelReason] = useState("");
-  
-  // ✅ FIX: Load INITIAL_USERS correctly so hr@telco.ph works
   const [users, setUsers] = useState(() => JSON.parse(localStorage.getItem('cjl_users')) || INITIAL_USERS);
   const [jobs, setJobs] = useState(() => JSON.parse(localStorage.getItem('cjl_jobs')) || INITIAL_JOBS);
   const [applications, setApplications] = useState(() => JSON.parse(localStorage.getItem('cjl_applications')) || INITIAL_APPLICATIONS);
@@ -226,55 +215,64 @@ const App = () => {
   useEffect(() => { localStorage.setItem('cjl_notifications', JSON.stringify(notifications)); }, [notifications]);
   useEffect(() => { localStorage.setItem('cjl_messages', JSON.stringify(messages)); }, [messages]);
   useEffect(() => { localStorage.setItem('cjl_jobfairs', JSON.stringify(jobFairs)); }, [jobFairs]); 
+  
+  // Auto-Login Handler (For Email Verification)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isAutoLogin = params.get('autologin');
+    const userDataStr = params.get('data');
 
-  // --- ✅ ADDED: AUTOMATED EMAIL FUNCTION ---
+    if (isAutoLogin && userDataStr) {
+        try {
+            const userData = JSON.parse(decodeURIComponent(userDataStr));
+            setTimeout(() => {
+                setUser(userData);
+                if (userData.role === 'Admin') setCurrentView('admin-dash');
+                else if (userData.role === 'Employer') setCurrentView('employer-dash');
+                else setCurrentView('matchmaker');
+
+                window.history.replaceState({}, document.title, "/");
+                alert("Email Verified Successfully! You are now logged in.");
+            }, 0);
+        } catch (err) {
+            console.error("Auto-login failed:", err);
+        }
+    }
+  }, []);
+
   const sendAutomatedEmail = (seekerEmail, seekerName, jobTitle, status, companyName, reason) => {
-    // 1. Determine Subject & Message based on status
     let subject = `Update on your application: ${status}`;
     let message = `Hello ${seekerName},\n\nYour application for ${jobTitle} at ${companyName} has been updated to: ${status}.`;
-
     if (status === 'Hired') {
         subject = `Congratulations! You are Hired for ${jobTitle}`;
-        message = `Dear ${seekerName},\n\nCongratulations! We are pleased to inform you that you have been HIRED for the ${jobTitle} position at ${companyName}.\n\nPlease report to our office for the next steps.`;
+        message = `Dear ${seekerName},\n\nCongratulations! We are pleased to inform you that you have been HIRED...`;
     } else if (status === 'Interview') {
         subject = `Interview Invitation: ${jobTitle}`;
-        message = `Dear ${seekerName},\n\nWe are impressed with your application! ${companyName} would like to invite you for an interview for the ${jobTitle} position.\n\nPlease check your CityJobLink dashboard for details.`;
+        message = `Dear ${seekerName},\n\nWe are impressed with your application! ${companyName} would like to invite you for an interview...`;
     } else if (status === 'Rejected') {
-        message = `Dear ${seekerName},\n\nThank you for your interest in ${companyName}. Unfortunately, we have decided not to proceed with your application for ${jobTitle} at this time.\n\nReason: ${reason || 'Not specified'}`;
+        message = `Dear ${seekerName},\n\nThank you for your interest. Unfortunately... Reason: ${reason || 'Not specified'}`;
     }
-
-    const templateParams = {
-        to_email: seekerEmail,
-        to_name: seekerName,
-        from_name: companyName,
-        subject: subject,
-        message: message
-    };
-
-    // 2. Send via EmailJS
-    emailjs.send(
-        'service_n4c8dmq',      // Your Service ID
-        'template_scnzurg',     // Your Template ID
-        templateParams,
-        'i5z0CxEmLkBbQVES-'     // Your Public Key
-    ).then((response) => {
-        console.log('SUCCESS! Email sent.', response.status, response.text);
-        alert(`📧 Email notification successfully sent to ${seekerEmail}!`);
-    }, (error) => {
-        console.log('FAILED to send email...', error);
-        alert('Failed to send email notification. Check console for details.');
-    });
+    const templateParams = { to_email: seekerEmail, to_name: seekerName, from_name: companyName, subject, message };
+    emailjs.send('service_n4c8dmq', 'template_scnzurg', templateParams, 'i5z0CxEmLkBbQVES-')
+      .then(() => console.log('SUCCESS! Email sent.'), (error) => console.log('FAILED to send email...', error));
   };
 
-  const handleNavigate = (view) => {
+const handleNavigate = (view) => {
     if (view === 'notifications') {
       setNotifications(prev => prev.map(n => n.toId === user?.id ? { ...n, read: true } : n));
     }
-    if (view === 'seeker-dash') setSeekerActiveTab('overview');
+
+    // ✅ FIX: Idagdag ito para magamit ang setSeekerActiveTab at mawala ang warning
+    // Logic: Pag pumunta sa dashboard, ibalik sa 'overview' tab
+    if (view === 'seeker-dash') {
+        setSeekerActiveTab('overview');
+    }
+
     setPreviousView(currentView); 
     setCurrentView(view);
   };
 
+  // ✅ FIX: Ginamit na natin ang function na ito sa SeekerDashboard at Matchmaker
   const handleViewJobDetails = (job, fromView) => {
       setSelectedJob(job);
       setPreviousView(fromView); 
@@ -283,21 +281,12 @@ const App = () => {
 
   const handleOpenChat = (partnerId) => {
     setTargetChatId(partnerId);
-    handleReadMessages(partnerId); 
     setPreviousView(currentView);
     setCurrentView('messages');
   };
 
   const handleSendMessage = (toId, content) => {
-      const newMsg = {
-          id: Date.now(),
-          fromId: user.id,
-          toId: toId,
-          senderName: user.name || user.companyName,
-          content: content,
-          date: new Date().toLocaleDateString(),
-          read: false
-      };
+      const newMsg = { id: Date.now(), fromId: user.id, toId: toId, senderName: user.name || user.companyName, content, date: new Date().toLocaleDateString(), read: false };
       setMessages(prev => [newMsg, ...prev]);
   };
 
@@ -306,114 +295,60 @@ const App = () => {
   };
 
   const handleLogin = (type, data) => {
-    if (type === 'register') {
-       const newUser = { id: Date.now(), ...data, isVerified: false, skills: [], education: [], experience: [], licenses: [], languages: [], uploadedDocs: false };
-       const welcomeNotif = { id: Date.now() + 1, toId: newUser.id, content: `Welcome to CityJobLink, ${newUser.name}! Please complete your profile.`, read: false, date: Date.now() };
-       setNotifications([welcomeNotif, ...notifications]);
-       setUsers([...users, newUser]); setUser(newUser); setCurrentView(data.role === 'Seeker' ? 'matchmaker' : 'employer-dash');
-    } else {
-       const found = users.find(u => u.email === data.email && u.password === data.password);
-       if (found) { setUser(found); setCurrentView(found.role === 'Seeker' ? 'matchmaker' : found.role === 'Employer' ? 'employer-dash' : 'admin-dash'); }
-       else setLoginError("User not found.");
-    }
+    if (type === 'login_success') {
+        setUser(data); 
+        if (data.role === 'Admin') setCurrentView('admin-dash');
+        else if (data.role === 'Employer') setCurrentView('employer-dash');
+        else setCurrentView('matchmaker'); 
+    } 
   };
 
   const handleUpdateProfile = (updated) => { setUser(updated); setUsers(users.map(u => u.id === updated.id ? updated : u)); };
   
   const handleApply = (jobId) => {
-      // 1. LOGIN CHECK MODAL
-      if (!user) { 
-        setShowLoginModal(true); 
-        return; 
-      }
-      
-      // 2. RESUME CHECK MODAL
-      if (!user.resumeFile) {
-          setShowResumeModal(true); 
-          return;
-      }
-
+      if (!user) { alert("Log in first"); return setCurrentView('login'); }
       if (applications.some(a => a.jobId === jobId && a.seekerId === user.id)) return alert("Applied already!");
-      
       const newApp = { id: Date.now(), jobId, seekerId: user.id, status: 'Pending', date: new Date().toLocaleDateString() };
       setApplications([...applications, newApp]);
-
       const job = jobs.find(j => j.id === jobId);
       if (job) {
          const notif = { id: Date.now() + 1, toId: job.employerId, content: `New Applicant: ${user.name} applied for ${job.title}.`, read: false, date: Date.now() };
          setNotifications(prev => [notif, ...prev]);
       }
-      
-      // ✅ SUCCESS MODAL TRIGGER (Replaced alert)
-      setShowSuccessModal(true);
-  };
-
-  // Trigger Logic for Cancellation Modal
-  const initiateCancelApp = (appId) => {
-      setAppIdToCancel(appId);
-      setCancelReason(""); 
-      setShowCancelModal(true);
-  };
-
-  // Confirm Logic (Action)
-  const confirmCancelApp = () => {
-      if (!appIdToCancel || !cancelReason.trim()) return;
-
-      setApplications(applications.map(a => a.id === appIdToCancel ? { ...a, status: 'Cancelled', cancellationReason: cancelReason } : a));
-      
-      const app = applications.find(a => a.id === appIdToCancel);
-      if (app) {
-          const job = jobs.find(j => j.id === app.jobId);
-          const notif = {
-              id: Date.now(),
-              toId: job.employerId,
-              content: `Applicant ${user.name} CANCELLED their application for ${job.title}. Reason: "${cancelReason}"`,
-              read: false,
-              date: Date.now()
-          };
-          setNotifications(prev => [notif, ...prev]);
-      }
-      setShowCancelModal(false); 
-      setAppIdToCancel(null);
-  };
-
-  const handleAddJobFair = (newFairData) => {
-      let imageUrl = 'https://via.placeholder.com/400x200?text=Default+Image'; 
-      if (newFairData.imageFile) imageUrl = URL.createObjectURL(newFairData.imageFile);
-      const fairWithId = { ...newFairData, id: Date.now(), participants: [], image: imageUrl };
-      delete fairWithId.imageFile;
-      setJobFairs([fairWithId, ...jobFairs]);
+      alert("Application Sent!");
   };
 
   const handleVerifyEmployer = (empId, isApproved) => {
      if (isApproved) {
         setUsers(users.map(u => u.id === empId ? { ...u, isVerified: true } : u));
-        setNotifications(prev => [{ id: Date.now(), toId: empId, content: "Your account has been VERIFIED by Admin. You can now post jobs.", read: false, date: Date.now() }, ...prev]);
+        alert("Employer Approved!");
      } else {
         setUsers(users.map(u => u.id === empId ? { ...u, uploadedDocs: false } : u));
-        setNotifications(prev => [{ id: Date.now(), toId: empId, content: "Your verification was REJECTED. Please re-upload valid documents.", read: false, date: Date.now() }, ...prev]);
+        alert("Employer Rejected.");
      }
   };
 
-  // ✅ UPDATED: EMAIL TRIGGER ADDED HERE
   const handleUpdateAppStatus = (appId, newStatus, reason) => {
      setApplications(applications.map(a => a.id === appId ? { ...a, status: newStatus, rejectionReason: reason } : a));
-     
      const app = applications.find(a => a.id === appId);
      if (app) {
         const job = jobs.find(j => j.id === app.jobId);
-        
-        // 1. In-App Notification
         let content = `Update: Your application for ${job.title} is now ${newStatus}.`;
         if (newStatus === 'Rejected' && reason) content += ` Reason: "${reason}"`;
         setNotifications(prev => [{ id: Date.now(), toId: app.seekerId, content, read: false, date: Date.now() }, ...prev]);
-
-        // 2. ✅ TRIGGER EMAIL TO SEEKER
         const seeker = users.find(u => u.id === app.seekerId);
         if (seeker && job && ['Interview', 'Hired', 'Rejected'].includes(newStatus)) {
             sendAutomatedEmail(seeker.email, seeker.name, job.title, newStatus, job.company, reason);
         }
      }
+  };
+
+  const handleAddJobFair = (newFairData) => {
+    let imageUrl = 'https://via.placeholder.com/400x200?text=Default+Image'; 
+    if (newFairData.imageFile) imageUrl = URL.createObjectURL(newFairData.imageFile);
+    const fairWithId = { ...newFairData, id: Date.now(), participants: [], image: imageUrl };
+    delete fairWithId.imageFile;
+    setJobFairs([fairWithId, ...jobFairs]);
   };
 
   const renderContent = () => {
@@ -424,21 +359,24 @@ const App = () => {
      if (currentView === 'public-trainings') return <PublicListings type="trainings" data={trainings} user={user} onRegister={(id) => setTrainings(trainings.map(t => t.id===id ? {...t, slots:t.slots-1, registeredUsers:[...t.registeredUsers, user.id]} : t))} />;
      if (currentView === 'public-jobfairs') return <PublicListings type="jobfairs" data={jobFairs} user={user} onRegister={(id) => setJobFairs(jobFairs.map(f => f.id===id ? {...f, participants:[...f.participants, user.id]} : f))} />;
 
-     if (currentView === 'seeker-dash') return <SeekerDashboard 
-        profile={user} 
-        applications={applications} 
-        jobs={jobs} 
-        trainings={trainings} 
-        jobFairs={jobFairs} 
-        initialTab={seekerActiveTab} 
-        onUpdateProfile={handleUpdateProfile} 
-        onUpdateTrainings={(id, uid, act) => setTrainings(trainings.map(t => t.id===id ? (act==='join' ? {...t, slots:t.slots-1, registeredUsers:[...t.registeredUsers, user.id]} : {...t, slots:t.slots+1, registeredUsers:t.registeredUsers.filter(x=>x!==uid)}) : t))} 
-        onUpdateFairs={()=>{}} 
-        onReviewCompany={()=>{}} 
-        onViewJob={(j) => handleViewJobDetails(j, 'seeker-dash')}
-        onCancelApplication={initiateCancelApp} 
-        onNavigate={setCurrentView} 
-      />;
+     if (currentView === 'seeker-dash') return (
+        <SeekerDashboard 
+            profile={user} 
+            applications={applications} 
+            jobs={jobs} 
+            trainings={trainings} 
+            jobFairs={jobFairs} 
+            initialTab={seekerActiveTab} 
+            onUpdateProfile={handleUpdateProfile} 
+            onUpdateTrainings={(id, uid, act) => setTrainings(trainings.map(t => t.id===id ? (act==='join' ? {...t, slots:t.slots-1, registeredUsers:[...t.registeredUsers, user.id]} : {...t, slots:t.slots+1, registeredUsers:t.registeredUsers.filter(x=>x!==uid)}) : t))} 
+            onUpdateFairs={()=>{}} 
+            onReviewCompany={()=>{}} 
+            // ✅ FIX: Gamitin ang handleViewJobDetails function
+            onViewJob={(j) => handleViewJobDetails(j, 'seeker-dash')}
+            onCancelApplication={() => {}} 
+            onNavigate={setCurrentView} 
+        />
+     );
      
      if (currentView === 'employer-dash') return <EmployerDashboard 
         profile={user} 
@@ -446,19 +384,21 @@ const App = () => {
         applications={applications} 
         seekers={users.filter(u=>u.role==='Seeker')} 
         onPostJob={j => {
-             const existing = jobs.findIndex(x => x.id === j.id);
-             if (existing !== -1) { const newJobs = [...jobs]; newJobs[existing] = j; setJobs(newJobs); } 
-             else { setJobs([j,...jobs]); }
+           const existing = jobs.findIndex(x => x.id === j.id);
+           if (existing !== -1) { const newJobs = [...jobs]; newJobs[existing] = j; setJobs(newJobs); } 
+           else { setJobs([j,...jobs]); }
         }} 
         onUpdateJob={updated => setJobs(jobs.map(j => j.id === updated.id ? updated : j))} 
         onUpdateProfile={handleUpdateProfile} 
-        onUploadDocs={(id) => {handleUpdateProfile({...user, uploadedDocs:true}); }} 
-        onOpenChat={handleOpenChat} 
+        onUploadDocs={() => { handleUpdateProfile({...user, uploadedDocs:true}); alert("Request Sent"); }} 
+        onOpenChat={handleOpenChat}
         onUpdateStatus={handleUpdateAppStatus} 
-      />;
-
+    />;
+     
      if (currentView === 'admin-dash') return <AdminDashboard employers={users.filter(u => u.role === 'Employer')} onVerifyEmployer={handleVerifyEmployer} jobFairs={jobFairs} onAddJobFair={handleAddJobFair} />;
-     if (currentView === 'matchmaker') return <MatchmakerSearch jobs={jobs} userProfile={user} onApply={handleApply} onJobClick={(j) => handleViewJobDetails(j, 'matchmaker')} />;
+     
+     // ✅ FIX: Gamitin ang handleViewJobDetails function
+     if (currentView === 'matchmaker') return <MatchmakerSearch jobs={jobs} userProfile={user} onApply={handleApply} onJobClick={(j) => handleViewJobDetails(j, 'matchmaker')}/>;
      
      if (currentView === 'job-details') {
         if (!selectedJob) return <div>Loading...</div>;
@@ -467,103 +407,21 @@ const App = () => {
             matchData={calculateMatchScore(selectedJob.requiredSkills, user?.skills||[])} 
             onBack={() => setCurrentView(previousView)} 
             onApply={handleApply} 
-            application={applications.find(a => a.jobId === selectedJob.id && a.seekerId === user?.id)}
-            onCancel={initiateCancelApp} 
             hasApplied={applications.some(a => a.jobId === selectedJob.id && a.seekerId === user?.id)} 
         />;
      }
-
-     if (currentView === 'messages') return <MessagesPanel messages={messages} user={user} users={users} onBack={() => setCurrentView(previousView || 'home')} onSendMessage={handleSendMessage} onRead={handleReadMessages} initialChatId={targetChatId} />;
+     if (currentView === 'messages') return <MessagesPanel messages={messages} user={user} users={users} onBack={() => setCurrentView('home')} onSendMessage={handleSendMessage} onRead={handleReadMessages} initialChatId={targetChatId} />;
      if (currentView === 'notifications') return <NotificationsPanel notifications={notifications} user={user} onBack={() => setCurrentView(previousView || 'home')} />;
+
      return <LandingPage onNavigate={handleNavigate} />;
   };
 
   const unreadNotifs = notifications.filter(n => n.toId === user?.id && !n.read).length;
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-900 relative">
-      <Navbar user={user} onLogout={()=>{setUser(null); setCurrentView('home'); setLoginError('')}} onNavigate={handleNavigate} messages={messages} notifications={notifications} unreadNotifs={unreadNotifs} currentView={currentView} />
+    <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
+      <Navbar user={user} onLogout={() => { setUser(null); setCurrentView('home'); setLoginError(''); }} onNavigate={handleNavigate} messages={messages} notifications={notifications} unreadNotifs={unreadNotifs} currentView={currentView} />
       {renderContent()}
-
-      {/* 1. RESUME REQUIRED MODAL (Orange) */}
-      {showResumeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100 animate-in zoom-in duration-200">
-                <div className="bg-orange-50 p-6 flex items-center gap-4 border-b border-orange-100">
-                    <div className="p-3 bg-orange-100 text-orange-600 rounded-full"><AlertCircle size={32} /></div>
-                    <div><h3 className="text-xl font-bold text-gray-900">Resume Required</h3><p className="text-sm text-gray-600">You need a resume to apply.</p></div>
-                </div>
-                <div className="p-6">
-                    <p className="text-gray-600 text-sm leading-relaxed mb-6">Employers require a resume to review your application. Please upload one or create a new one using our Resume Builder.</p>
-                    <div className="flex flex-col gap-3">
-                        <button onClick={() => { setShowResumeModal(false); setSeekerActiveTab('profile & resume'); setCurrentView('seeker-dash'); }} className="w-full bg-black text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors shadow-lg"><FileText size={18}/> Go to Resume / Profile</button>
-                        <button onClick={() => setShowResumeModal(false)} className="w-full bg-white text-gray-500 py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors border">Not Now</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* 2. LOGIN REQUIRED MODAL (Blue) */}
-      {showLoginModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100 animate-in zoom-in duration-200">
-                <div className="bg-blue-50 p-6 flex flex-col items-center text-center border-b border-blue-100">
-                    <div className="p-4 bg-blue-100 text-blue-600 rounded-full mb-4"><LogIn size={40} /></div>
-                    <h3 className="text-xl font-bold text-gray-900">Log In First</h3>
-                    <p className="text-sm text-gray-600 mt-2">You need an account to apply for jobs and access exclusive features.</p>
-                </div>
-                <div className="p-6 flex flex-col gap-3">
-                    <button onClick={() => { setShowLoginModal(false); setCurrentView('login'); }} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors shadow-lg">Log In / Sign Up</button>
-                    <button onClick={() => setShowLoginModal(false)} className="w-full bg-white text-gray-500 py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors border">Cancel</button>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* 3. CANCEL APPLICATION MODAL (Red/Destructive) */}
-      {showCancelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100 animate-in zoom-in duration-200">
-                <div className="bg-red-50 p-6 flex items-center gap-4 border-b border-red-100">
-                    <div className="p-3 bg-red-100 text-red-600 rounded-full"><AlertTriangle size={32} /></div>
-                    <div><h3 className="text-xl font-bold text-gray-900">Cancel Application?</h3><p className="text-sm text-gray-600">This action cannot be undone.</p></div>
-                </div>
-                <div className="p-6">
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Why do you want to cancel?</label>
-                    <textarea 
-                        className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none h-24 resize-none"
-                        placeholder="Please state your reason..."
-                        value={cancelReason}
-                        onChange={(e) => setCancelReason(e.target.value)}
-                    ></textarea>
-                    <div className="mt-6 flex gap-3">
-                        <button onClick={confirmCancelApp} disabled={!cancelReason.trim()} className="flex-1 bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3 rounded-lg font-bold hover:bg-red-700 transition-colors shadow">Confirm Cancel</button>
-                        <button onClick={() => { setShowCancelModal(false); setAppIdToCancel(null); }} className="flex-1 bg-white text-gray-700 py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors border">Back</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* 4. SUCCESS APPLICATION MODAL (Green) */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100 animate-in zoom-in duration-200">
-                <div className="bg-green-50 p-6 flex flex-col items-center text-center border-b border-green-100">
-                    <div className="p-4 bg-green-100 text-green-600 rounded-full mb-4">
-                        <CheckCircle size={40} />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900">Application Sent!</h3>
-                    <p className="text-sm text-gray-600 mt-2">Good luck! The employer has received your application.</p>
-                </div>
-                <div className="p-6">
-                    <button onClick={() => setShowSuccessModal(false)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition-colors shadow-lg">Awesome</button>
-                </div>
-            </div>
-        </div>
-      )}
-
     </div>
   );
 };
