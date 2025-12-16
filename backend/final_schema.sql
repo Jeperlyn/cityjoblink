@@ -1,0 +1,1 @@
+ALTER TABLE clients ADD COLUMN resume_path VARCHAR(255);
