@@ -1,7 +1,6 @@
 // src/pages/SeekerDashboard.jsx
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-// ✅ FIXED IMPORTS: Calendar, Clock, MapPin are essential for Job Fairs tab
-import { Edit3, Trash2, X, FileText, UploadCloud, Plus, ChevronLeft, Search, Filter, Star, CheckCircle, XCircle, Calendar, Clock, MapPin, Ticket, Printer, User, Smile } from 'lucide-react';
+import { Edit3, Trash2, X, FileText, UploadCloud, Plus, ChevronLeft, Search, Filter, Star, CheckCircle, XCircle, Calendar, Clock, MapPin, Ticket, Printer, User, Smile, Loader2, Download, AlertCircle } from 'lucide-react';
 import { calculateMatchScore } from '../data/mockData';
 
 // --- 1. MATCHMAKER SEARCH (Cards) ---
@@ -78,7 +77,9 @@ export const JobDetailsPage = ({ job, matchData, onBack, onApply, application, o
   const cleanJobSkills = job.requiredSkills.filter(s => s && s.trim() !== "");
   const missingSkills = cleanJobSkills.filter(skill => !matchData.matches.includes(skill));
   const hasRequirements = cleanJobSkills.length > 0;
-  const canCancel = application && ['Pending', 'Viewing', 'Interview'].includes(application.status);
+  
+  // ✅ FIXED: Allow cancel for 'Applied' and 'Interviewed'
+  const canCancel = application && ['Applied', 'Interviewed'].includes(application.status);
 
   return (
     <div className="max-w-5xl mx-auto p-6 min-h-screen">
@@ -126,36 +127,36 @@ export const JobDetailsPage = ({ job, matchData, onBack, onApply, application, o
 
          {application ? (
              <div className={`mb-8 p-6 rounded-xl border-l-8 shadow-sm ${
-                 application.status === 'Rejected' ? 'bg-red-50 border-red-500' :
+                 application.status === 'Not Selected' ? 'bg-red-50 border-red-500' :
                  application.status === 'Cancelled' ? 'bg-gray-50 border-gray-400' :
                  'bg-green-50 border-green-500'
              }`}>
                  <div className="flex items-start gap-4">
                      <div className={`p-3 rounded-full ${
-                         application.status === 'Rejected' ? 'bg-red-200 text-red-700' :
+                         application.status === 'Not Selected' ? 'bg-red-200 text-red-700' :
                          application.status === 'Cancelled' ? 'bg-gray-200 text-gray-600' :
                          'bg-green-200 text-green-700'
                      }`}>
-                         {application.status === 'Rejected' ? <XCircle size={32}/> : 
+                         {application.status === 'Not Selected' ? <XCircle size={32}/> : 
                           application.status === 'Cancelled' ? <XCircle size={32}/> : 
                           <CheckCircle size={32}/>}
                      </div>
                      <div className="flex-1">
                          <h3 className={`text-xl font-bold ${
-                             application.status === 'Rejected' ? 'text-red-800' :
+                             application.status === 'Not Selected' ? 'text-red-800' :
                              application.status === 'Cancelled' ? 'text-gray-800' :
                              'text-green-800'
                          }`}>
-                             {application.status === 'Pending' ? 'Application Submitted!' :
-                              application.status === 'Viewing' ? 'Application Viewed' :
-                              application.status === 'Interview' ? 'For Interview' :
+                             {/* ✅ UPDATED: Status Labels */}
+                             {application.status === 'Applied' ? 'Application Submitted!' :
+                              application.status === 'Interviewed' ? 'For Interview' :
                               application.status === 'Hired' ? 'You are Hired! 🎉' :
-                              application.status === 'Rejected' ? 'Application Not Selected' :
+                              application.status === 'Not Selected' ? 'Not Selected' :
                               'Application Withdrawn'}
                          </h3>
-                         <p className="text-sm text-gray-500 flex items-center gap-2 mt-1">Applied on: {application.date}</p>
+                         <p className="text-sm text-gray-500 flex items-center gap-2 mt-1">Status Date: {application.date}</p>
 
-                         {application.status === 'Rejected' && application.rejectionReason && (
+                         {application.status === 'Not Selected' && application.rejectionReason && (
                              <div className="mt-3 bg-white border border-red-100 p-3 rounded text-sm text-red-700">
                                  <span className="font-bold">Employer's Note:</span> {application.rejectionReason}
                              </div>
@@ -222,6 +223,11 @@ export const JobDetailsPage = ({ job, matchData, onBack, onApply, application, o
 const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, initialTab, onUpdateProfile, onUpdateTrainings, onReviewCompany, onViewJob, onCancelApplication, onNavigate }) => {
   const [activeTab, setActiveTab] = useState(initialTab || 'overview');
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+
+  const myTrainings = (trainings || []).filter(t => t.registeredUsers?.includes(profile?.id));
+  const myFairs = (jobFairs || []).filter(f => f.participants?.includes(profile?.id));
 
   useEffect(() => {
     if (initialTab) {
@@ -234,33 +240,87 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, ini
   const [selectedTicket, setSelectedTicket] = useState(null);
 
   const fileInputRef = useRef(null);
+  const [currentFile, setCurrentFile] = useState(null);
 
-  const myTrainings = trainings.filter(t => t.registeredUsers.includes(profile.id));
-  const myFairs = jobFairs.filter(f => f.participants.includes(profile.id));
+const uploadResume = async (email, file) => {
+    const data = new FormData();
+    data.append('email', email);
+    data.append('resumeFile', file); 
 
-  // ✅ UPDATED: File Upload Logic (Converts to Base64)
-  const handleFileUpload = (e) => {
+    try {
+        const response = await fetch('http://localhost:5000/api/upload/resume', {
+            method: 'POST',
+            body: data, 
+        });
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            return result.user; 
+        } else {
+            setUploadError(result.message);
+            return null;
+        }
+    } catch (error) {
+        setUploadError("Network error: Cannot reach the server. Check if server is running."); 
+        return null;
+    }
+};
+
+const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Check size limit (2MB limit dahil sa LocalStorage restriction)
-      if (file.size > 2 * 1024 * 1024) {
-          alert("File is too large! Please upload a file smaller than 2MB.");
-          return;
-      }
+    if (!file) return;
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        onUpdateProfile({
-          ...profile, 
-          resumeFile: file.name, 
-          resumeType: 'uploaded',
-          resumeData: reader.result // ✅ Ito ang nagse-save ng laman ng file
+    if (file.size > 10 * 1024 * 1024) { 
+        alert("File is too large! Max limit is 10MB.");
+        return;
+    }
+    
+    setCurrentFile(file);
+    setIsUploading(true);
+    setUploadError(null);
+    
+    if (!profile.email) {
+        setUploadError("User email is missing from profile. Cannot upload.");
+        setIsUploading(false);
+        return;
+    }
+
+    const updatedUserData = await uploadResume(profile.email, file);
+    setIsUploading(false);
+
+    if (updatedUserData) {
+        onUpdateProfile({ 
+            ...profile, 
+            ...updatedUserData,
+            name: profile.name,
+            resumeFile: file.name,
         });
         setShowUploadModal(true);
-      };
-      reader.readAsDataURL(file);
+        setCurrentFile(null);
     }
-  };
+};
+
+const triggerFileInput = () => {
+    fileInputRef.current.click();
+};
+
+const handleDownloadResume = () => {
+    const filePath = profile.resumePath; 
+    if (filePath) {
+        const fileNamePart = profile.name || "Resume_File"; 
+        const fileExtension = filePath.split('/').pop() || "resume.pdf";
+        const publicUrl = `http://localhost:5000/${filePath}`;
+        const link = document.createElement('a');
+        link.href = publicUrl;
+        link.download = `${fileNamePart}_Resume_${fileExtension}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } else {
+        alert("Resume file path not found.");
+    }
+};
+
 
   const handleAddEntry = () => {
     if (modalType === 'review') onReviewCompany(tempInput.appId, tempInput.rating, tempInput.comment);
@@ -281,7 +341,7 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, ini
       <div className="flex justify-between items-end mb-6">
         <div>
             <h1 className="text-3xl font-bold">My Dashboard</h1>
-            <p className="text-gray-500">Welcome back, {profile.name}</p>
+            <p className="text-gray-500">Welcome back, {profile.name || profile.email || 'Job Seeker'}</p>
         </div>
       </div>
 
@@ -302,7 +362,8 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, ini
             <h3 className="font-bold text-lg mb-4">Applications</h3>
             {applications.length === 0 ? <p className="text-gray-500">No applications yet.</p> : applications.map(app => { 
                 const job = jobs.find(j => j.id === app.jobId); 
-                const canCancel = ['Pending', 'Viewing', 'Interview'].includes(app.status);
+                // ✅ FIXED: Allow cancel for specific statuses
+                const canCancel = ['Applied', 'Interviewed'].includes(app.status);
 
                 return (
                     <div key={app.id} className="flex justify-between items-start border-b pb-4 mb-4 last:border-0">
@@ -311,9 +372,9 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, ini
                             <p className="text-sm text-gray-500 mb-1">{job?.company || "Company Confidential"}</p>
                             <button onClick={() => onViewJob(job)} className="text-xs text-blue-600 underline font-bold">View Job Details</button>
                             
-                            {app.status === 'Rejected' && app.rejectionReason && (
+                            {app.status === 'Not Selected' && app.rejectionReason && (
                                 <div className="mt-2 bg-red-50 border border-red-100 p-2 rounded text-xs text-red-700 max-w-md">
-                                    <span className="font-bold">Rejection Reason:</span> {app.rejectionReason}
+                                    <span className="font-bold">Reason:</span> {app.rejectionReason}
                                 </div>
                             )}
 
@@ -325,11 +386,12 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, ini
                         </div>
                         
                         <div className="text-right flex flex-col items-end gap-2">
+                            {/* ✅ FIXED: Badge Colors for New Statuses */}
                             <span className={`block text-sm font-bold px-3 py-1 rounded-full ${
                                 app.status === 'Hired' ? 'bg-green-100 text-green-800' :
-                                app.status === 'Rejected' ? 'bg-red-100 text-red-800' :
+                                app.status === 'Not Selected' ? 'bg-red-100 text-red-800' :
                                 app.status === 'Cancelled' ? 'bg-gray-200 text-gray-600' :
-                                app.status === 'Interview' ? 'bg-blue-100 text-blue-800' :
+                                app.status === 'Interviewed' ? 'bg-blue-100 text-blue-800' :
                                 'bg-yellow-100 text-yellow-800'
                             }`}>
                                 {app.status}
@@ -354,8 +416,6 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, ini
 
       {activeTab === 'profile & resume' && (
          <div className="space-y-6">
-            
-            {/* ✅ NEW: PERSONAL INFORMATION SECTION */}
             <div className="bg-white p-6 rounded-xl shadow-sm border">
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-gray-900">
                     <User className="text-cyan-600"/> Personal Information
@@ -388,38 +448,43 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, ini
                 </div>
             </div>
 
-            {/* EXISTING RESUME SECTION */}
             <div className="bg-white p-6 rounded-xl shadow-sm border">
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                     <FileText className="text-cyan-600"/> Current Resume
                 </h3>
-                {profile.resumeFile ? (
+                {uploadError && (
+                    <div className="bg-red-50 border border-red-200 p-3 rounded-lg mb-4 text-red-800 text-sm font-medium">
+                        <AlertCircle size={16} className="inline mr-2"/> Upload Failed: {uploadError}
+                    </div>
+                )}
+                {profile.resumePath ? ( 
                     <div className="flex items-center justify-between bg-green-50 p-4 rounded-lg border border-green-200">
                         <div className="flex items-center gap-4">
                             <div className="bg-white p-2 rounded shadow-sm">
                                 <FileText size={32} className="text-red-500"/>
                             </div>
                             <div>
-                                <p className="font-bold text-gray-800">{profile.resumeFile}</p>
+                                <p className="font-bold text-gray-800">{profile.resumePath?.split('/').pop() || 'File on Record'}</p>
                                 <p className="text-xs text-green-700">Ready for applications</p>
                             </div>
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={() => fileInputRef.current.click()} className="text-sm text-blue-600 font-bold hover:underline">Replace</button>
-                            <button onClick={()=>onUpdateProfile({...profile, resumeFile: null})} className="text-sm text-red-500 font-bold hover:underline">Remove</button>
+                            <button onClick={handleDownloadResume} className="text-sm bg-blue-600 text-white px-3 py-1 rounded font-bold hover:bg-blue-700 flex items-center gap-1"><Download size={14}/> Download</button>
+                            <button onClick={triggerFileInput} className="text-sm text-blue-600 font-bold hover:underline">Replace</button>
+                            <button onClick={()=>onUpdateProfile({...profile, resumePath: null})} className="text-sm text-red-500 font-bold hover:underline">Remove</button>
                         </div>
                     </div>
                 ) : (
                     <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                         <p className="text-gray-500 mb-4">No resume uploaded yet.</p>
-                        <button onClick={() => fileInputRef.current.click()} className="bg-black text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-800 flex items-center gap-2 mx-auto">
-                            <UploadCloud size={18}/> Upload PDF Resume
+                        <button onClick={triggerFileInput} disabled={isUploading} className="bg-black text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-800 flex items-center gap-2 mx-auto disabled:bg-gray-400">
+                            {isUploading ? <Loader2 className="animate-spin" size={18}/> : <UploadCloud size={18}/>} 
+                            {isUploading ? "Uploading..." : "Upload PDF Resume"}
                         </button>
                     </div>
                 )}
             </div>
 
-            {/* EXISTING BUILDER PROMO */}
             <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl shadow-lg text-white p-8 flex flex-col md:flex-row items-center justify-between gap-6">
                 <div>
                     <h3 className="text-2xl font-bold mb-2">Don't have a resume?</h3>
@@ -435,7 +500,21 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, ini
          </div>
       )}
 
-      {activeTab === 'trainings' && <div className="grid md:grid-cols-2 gap-4">{myTrainings.map(t => <div key={t.id} className="bg-white p-5 rounded border"><h3 className="font-bold">{t.title}</h3><button onClick={()=>onUpdateTrainings(t.id, profile.id, 'leave')} className="text-red-500 text-sm mt-2">Cancel Registration</button></div>)}</div>}
+      {activeTab === 'trainings' && (
+        <div className="grid md:grid-cols-2 gap-4">
+          {myTrainings.length === 0 ? (
+            <p className="text-gray-500">You haven't registered for any trainings yet.</p>
+          ) : (
+            myTrainings.map(t => (
+              <div key={t.id} className="bg-white p-5 rounded border shadow-sm">
+                <h3 className="font-bold text-lg">{t.title}</h3>
+                <p className="text-sm text-gray-500 mb-2">{t.provider}</p>
+                <button onClick={()=>onUpdateTrainings(t.id, profile.id, 'leave')} className="text-red-500 text-sm font-bold mt-2 hover:underline">Cancel Registration</button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
       
       {activeTab === 'jobfairs' && (
         <div className="space-y-4">
@@ -482,20 +561,6 @@ const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, ini
                     </div>
                 </div>
             </div>
-        </div>
-      )}
-
-      {modalType && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full">
-             <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold capitalize">Action</h2><button onClick={()=>setModalType(null)}><X/></button></div>
-             <div className="space-y-3">
-                {modalType==='summary' && <textarea className="w-full border p-2 rounded h-32" placeholder="Bio..." onChange={e=>setTempInput({...tempInput, bio:e.target.value})}/>}
-                {modalType==='review' && <><select className="w-full border p-2" onChange={e=>setTempInput({...tempInput, rating:e.target.value})}><option value="5">5 Stars</option></select><textarea className="w-full border p-2" placeholder="Comment" onChange={e=>setTempInput({...tempInput, comment:e.target.value})}/></>}
-                {modalType!=='review' && <button onClick={handleAddEntry} className="bg-black text-white w-full py-2 rounded font-bold">Save</button>}
-                {modalType==='review' && <button onClick={handleAddEntry} className="bg-black text-white w-full py-2 rounded font-bold">Submit Review</button>}
-             </div>
-          </div>
         </div>
       )}
 

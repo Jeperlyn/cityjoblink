@@ -1,1 +1,1 @@
-ALTER TABLE clients ADD COLUMN resume_path VARCHAR(255);
+SELECT id, status FROM applications LIMIT 10;

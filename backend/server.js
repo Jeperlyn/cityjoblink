@@ -3,8 +3,8 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
 const nodemailer = require('nodemailer');
-const multer = require('multer'); // 👈 NEW: Import Multer
-const fs = require('fs'); // Para sa file system operations
+const multer = require('multer'); 
+const fs = require('fs'); 
 require('dotenv').config(); 
 
 const app = express();
@@ -13,7 +13,6 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-// Para ma-access ang files sa 'uploads' folder
 app.use('/uploads', express.static('uploads')); 
 
 // ==========================================
@@ -27,12 +26,9 @@ const pool = new Pool({
     database: process.env.DB_NAME,
 });
 
-// 🔥 STARTUP CONNECTION TEST 🔥
 pool.connect((err, client, release) => {
     if (err) {
         console.error("❌ FATAL ERROR: Database Connection Failed!");
-        console.error("👉 Reason:", err.message);
-        console.error("👉 Check your .env file and PostgreSQL service.");
     } else {
         console.log("✅ DATABASE CONNECTED SUCCESSFULLY (CityJobLink Schema)");
         release();
@@ -53,18 +49,18 @@ const transporter = nodemailer.createTransport({
 // ==========================================
 // 3. MULTER CONFIGURATION (File Uploads)
 // ==========================================
-
-// Storage setup: Saves files to the 'uploads' folder
+// SA server.js, sa loob ng MULTER CONFIGURATION
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // Tiyakin na mayroon kang folder na 'uploads' sa root ng backend mo
         cb(null, 'uploads/'); 
     },
     filename: (req, file, cb) => {
-        // Gumawa ng unique filename (UserID-timestamp.ext)
-        const emailPart = req.body.email ? req.body.email.split('@')[0] : 'temp';
+        // ✅ CRITICAL FIX: Defensive approach sa email at originalname
+        const emailPart = req.body.email ? req.body.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '_') : 'unknown'; 
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, `${emailPart}-${uniqueSuffix}-${file.originalname}`);
+        const fileExtension = file.originalname.split('.').pop();
+        
+        cb(null, `${emailPart}-${uniqueSuffix}.${fileExtension}`);
     }
 });
 
@@ -78,7 +74,6 @@ const upload = multer({
 // 4. ROUTES
 // ==========================================
 
-// Helper Route
 app.get('/', (req, res) => {
     res.json({ message: "CityJobLink Backend is Live!" });
 });
@@ -132,9 +127,9 @@ app.post('/api/register', async (req, res) => {
                 INSERT INTO clients (users_id, first_name, middle_name, last_name, suffix, date_of_birth, sex, qcitizen_id, contact_number, created_at, updated_at) 
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
             `, [newUserId, firstName, middleName, lastName, suffix, bdayString, gender, qcId, contactNumber]);
-
+            
+            console.log(`[DEBUG REGISTER] Client inserted with ID: ${newUserId}`); // 👈 DEBUG LOG
         } else if (role === 'Employer') {
-            // ✅ CORRECTION: Inayos ang INSERT query para kasama ang ADDRESS, CONTACT_NUMBER, WEBSITE
             await client.query(`
                 INSERT INTO companies (
                     users_id, company_name, email_address, 
@@ -151,10 +146,9 @@ app.post('/api/register', async (req, res) => {
             ]);
         }
 
-        await client.query('COMMIT'); // Commit Transaction
+        await client.query('COMMIT'); 
         console.log("✅ User Registered Successfully");
 
-        // Send Email 
         const mailOptions = {
             from: `"CityJobLink" <${process.env.EMAIL_USER}>`,
             to: email,
@@ -166,49 +160,66 @@ app.post('/api/register', async (req, res) => {
         res.json({ status: "success", message: "Registration successful! OTP Sent." });
 
     } catch (err) {
-        await client.query('ROLLBACK'); // Rollback Transaction if error occurs
+        await client.query('ROLLBACK'); 
         console.error("❌ REGISTER ERROR:", err.message);
         res.status(500).json({ status: "error", message: "Server Error: " + err.message });
     } finally {
-        client.release(); // Release the client connection
+        client.release(); 
     }
 });
 
 
-// 🚀 NEW ROUTE: HANDLE RESUME UPLOAD 🚀
+// 🚀 HANDLE RESUME UPLOAD (Dapat tawagin mula sa Seeker Dashboard)
 app.post('/api/upload/resume', upload.single('resumeFile'), async (req, res) => {
+    console.log("------------------------------------------");
+    console.log("🚀 START RESUME UPLOAD PROCESS");
+    
     try {
         if (!req.file) {
+            console.log("UPLOAD FAIL: No file uploaded.");
             return res.status(400).json({ status: 'error', message: 'No file uploaded.' });
         }
 
-        // Tiyakin na kasama ang 'email' sa FormData mula sa frontend
         const { email } = req.body; 
+        
+        console.log(`[DEBUG UPLOAD] Received email: ${email}`);
+        console.log(`[DEBUG UPLOAD] File saved locally at: ${req.file.path}`);
         
         // 1. I-save ang file path sa 'clients' table
         const clientUpdate = await pool.query(
-            // Dapat tama ang 'resume_path' column name sa database!
             `UPDATE clients SET resume_path = $1 
              WHERE users_id = (SELECT id FROM users WHERE email = $2)
              RETURNING users_id`, 
             [req.file.path, email]
         );
 
+        console.log(`[DEBUG UPLOAD] Rows updated in clients table: ${clientUpdate.rowCount}`);
+        
         if (clientUpdate.rowCount === 0) {
              // Kung hindi makita ang user, burahin ang file (cleanup)
              fs.unlinkSync(req.file.path); 
-             return res.status(404).json({ status: 'error', message: 'User not found or not a Seeker.' });
+             console.log("UPLOAD FAIL: User not found in clients table. File deleted.");
+             return res.status(404).json({ status: 'error', message: 'User not found or not a Seeker (Client ID mismatch).' });
         }
         
-        // 2. Ibalik ang path sa frontend (para alam nito kung saan hahanapin ang file)
+        // 2. KUNIN ANG BAGONG PROFILE DATA (para ibalik sa frontend at i-update ang global state)
+        const updatedProfile = await pool.query(
+            `SELECT u.id, u.email, u.role, c.resume_path 
+             FROM users u JOIN clients c ON u.id = c.users_id 
+             WHERE u.email = $1`, [email]
+        );
+        
+        console.log("✅ RESUME UPLOAD SUCCESS!");
+        
         res.json({ 
             status: 'success', 
             message: 'Resume uploaded and path saved!', 
-            filePath: req.file.path // Ex: uploads/email-123456-resume.pdf
+            filePath: req.file.path,
+            // 💡 NEW: Ibalik ang resume path at user ID
+            user: updatedProfile.rows[0] 
         });
 
     } catch (err) {
-        // Kung may error, burahin ang file kung na-save
         if (req.file && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
         }
@@ -243,7 +254,6 @@ app.post('/api/login', async (req, res) => {
 
         if (user.role === 'Seeker') {
             const p = await pool.query(
-                // ✅ DAPAT KASAMA ANG resume_path DITO
                 "SELECT first_name, middle_name, last_name, suffix, date_of_birth, sex, qcitizen_id, contact_number, resume_path FROM clients WHERE users_id = $1", 
                 [user.id]
             );
