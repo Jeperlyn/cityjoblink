@@ -25,7 +25,7 @@ export const PublicListings = ({ type, data, onRegister, user }) => (
       <p className="text-gray-600 max-w-2xl mx-auto">
         {type === 'trainings'
           ? 'Enhance your skills with free courses provided by TESDA and the Quezon City Government.'
-          : 'Mas maraming kumpanya, mas mataas ang chance na ma-hire on the spot.'}
+          : 'Join Now'}
       </p>
     </div>
 

@@ -123,14 +123,18 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-        const response = await fetch('http://localhost:5000/auth/verify-otp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: formData.email, otp: otpCode })
-        });
+        const response = await fetch('http://localhost:8000/api/verify-otp', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json' 
+                    },
+                    body: JSON.stringify({ email: formData.email, otp: otpCode })
+                });
+                
         const data = await response.json();
         if (response.ok) {
-            const loginResponse = await fetch('http://localhost:5000/api/login', {
+            const loginResponse = await fetch('http://localhost:8000/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: formData.email, password: formData.password })
@@ -152,7 +156,7 @@ const Login = ({ onLogin }) => {
     }
   };
 
-  const handleSubmit = async (e) => { 
+const handleSubmit = async (e) => { 
     e.preventDefault(); 
     
     if (mode === 'register') {
@@ -164,21 +168,29 @@ const Login = ({ onLogin }) => {
 
         setIsLoading(true);
         try {
-            const regResponse = await fetch('http://localhost:5000/api/register', {
+            const regResponse = await fetch('http://localhost:8000/api/register', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
                 body: JSON.stringify({
-                    ...formData,
-                    role: role,
-                    qcIdFileName: formData.qcIdFile ? formData.qcIdFile.name : null
+                    firstName: formData.firstName,
+                    lastName: formData.lastName,
+                    email: formData.email,
+                    password: formData.password,
+                    role: role
                 })
             });
+            
             const regData = await regResponse.json();
+            
             if (regData.status === 'success') {
+                // Trigger the OTP screen
                 setIsOtpStep(true); 
                 setModal({ type: 'success', title: 'Code Sent!', message: `We sent a verification code to ${formData.email}.` });
             } else {
-                setModal({ type: 'error', title: 'Error', message: regData.message || "Email already exists." });
+                setModal({ type: 'error', title: 'Registration Error', message: regData.message || "Email might already be taken." });
             }
         } catch (err) {
             setModal({ type: 'error', title: 'Connection Error', message: "Check your internet or server status." });
@@ -189,9 +201,12 @@ const Login = ({ onLogin }) => {
         // --- LOGIN FLOW ---
         setIsLoading(true);
         try {
-            const response = await fetch('http://localhost:5000/api/login', {
+            const response = await fetch('http://localhost:8000/api/login', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json' 
+                },
                 body: JSON.stringify({ email: formData.email, password: formData.password })
             });
             const data = await response.json();
@@ -199,7 +214,7 @@ const Login = ({ onLogin }) => {
                 localStorage.setItem('user', JSON.stringify(data.user)); 
                 if (onLogin) onLogin('login_success', data.user);
             } else {
-                setModal({ type: 'error', title: 'Login Failed', message: "Invalid email or password. Please try again." });
+                setModal({ type: 'error', title: 'Login Failed', message: data.message || "Invalid email or password. Please try again." });
             }
         } catch (err) {
             setModal({ type: 'error', title: 'Server Error', message: "Service is temporarily unavailable." });
