@@ -6,33 +6,54 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
 
 class AuthController extends Controller
 {
     public function register(Request $request)
     {
         try {
+            $existingUser = User::where('email', $request->email)->first();
+            if ($existingUser) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Email is already registered. Please login instead.'
+                ], 422);
+            }
+
             // 1. Generate a random 6-digit OTP
             $otpCode = rand(100000, 999999);
 
-            // 2. Create the user and save the OTP
-            $user = User::create([
-                'name' => $request->firstName . ' ' . $request->lastName,
+            // 2. Store registration data temporarily until OTP is verified
+            $cacheKey = 'pending_registration_' . strtolower((string) $request->email);
+            Cache::put($cacheKey, [
+                'name' => trim(($request->firstName ?? '') . ' ' . ($request->lastName ?? '')),
+                'company_name' => $request->companyName,
+                'qc_id' => $request->qcId,
+                'bday_month' => $request->bdayMonth,
+                'bday_day' => $request->bdayDay,
+                'bday_year' => $request->bdayYear,
+                'gender' => $request->gender,
+                'is_qc_resident' => $request->isQcResident ?? true,
                 'email' => $request->email,
+                'role' => $request->role ?? 'Seeker',
                 'password' => Hash::make($request->password),
-                'otp' => $otpCode // Save it to the database
-            ]);
+                'otp' => (string) $otpCode,
+            ], now()->addMinutes(10));
 
-            // 3. Send the Email using your .env Gmail credentials
-            Mail::raw("Your CityJobLink verification code is: {$otpCode}", function ($message) use ($user) {
-                $message->to($user->email)
+            // 3. Send the email OTP
+            Mail::raw("Your CityJobLink verification code is: {$otpCode}", function ($message) use ($request) {
+                $message->to($request->email)
                         ->subject('CityJobLink - Your Verification Code');
             });
 
             return response()->json(['status' => 'success', 'message' => 'OTP sent to email.']);
         } catch (\Exception $e) {
-            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Connection is unstable, please try registering again.'
+            ], 500);
         }
     }
 
@@ -54,22 +75,85 @@ class AuthController extends Controller
     public function verifyOtp(Request $request)
     {
         try {
-            // Find the user with the matching email and OTP code
-            $user = User::where('email', $request->email)
-                        ->where('otp', $request->otp)
-                        ->first();
+            $cacheKey = 'pending_registration_' . strtolower((string) $request->email);
+            $pendingRegistration = Cache::get($cacheKey);
 
-            if (!$user) {
+            if (!$pendingRegistration) {
                 return response()->json(['status' => 'error', 'message' => 'Invalid or expired OTP code.'], 401);
             }
 
-            // Success! Clear the OTP so it can't be reused
-            $user->otp = null;
-            $user->save();
+            if ((string) ($pendingRegistration['otp'] ?? '') !== (string) $request->otp) {
+                return response()->json(['status' => 'error', 'message' => 'Invalid or expired OTP code.'], 401);
+            }
+
+            $alreadyRegistered = User::where('email', $pendingRegistration['email'])->exists();
+            if ($alreadyRegistered) {
+                Cache::forget($cacheKey);
+                return response()->json(['status' => 'error', 'message' => 'Email is already registered. Please login instead.'], 409);
+            }
+
+            User::create([
+                'name' => $pendingRegistration['name'],
+                'company_name' => $pendingRegistration['company_name'],
+                'qc_id' => $pendingRegistration['qc_id'],
+                'bday_month' => $pendingRegistration['bday_month'],
+                'bday_day' => $pendingRegistration['bday_day'],
+                'bday_year' => $pendingRegistration['bday_year'],
+                'gender' => $pendingRegistration['gender'],
+                'is_qc_resident' => $pendingRegistration['is_qc_resident'],
+                'email' => $pendingRegistration['email'],
+                'role' => $pendingRegistration['role'],
+                'password' => $pendingRegistration['password'],
+                'otp' => null,
+                'is_verified' => true,
+                'uploaded_docs' => false,
+            ]);
+
+            Cache::forget($cacheKey);
 
             return response()->json(['status' => 'success', 'message' => 'Account verified successfully!']);
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function uploadResume(Request $request)
+    {
+        try {
+            $request->validate([
+                'email' => ['required', 'email'],
+                'resumeFile' => ['required', 'file', 'mimes:pdf,doc,docx', 'max:10240'],
+            ]);
+
+            $user = User::where('email', $request->email)->first();
+            if (!$user) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User not found for the provided email.',
+                ], 404);
+            }
+
+            if (!empty($user->resume_path)) {
+                $oldPath = str_replace('storage/', '', (string) $user->resume_path);
+                if ($oldPath !== '' && Storage::disk('public')->exists($oldPath)) {
+                    Storage::disk('public')->delete($oldPath);
+                }
+            }
+
+            $storedPath = $request->file('resumeFile')->store('resumes', 'public');
+            $user->resume_path = 'storage/' . $storedPath;
+            $user->save();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Resume uploaded successfully.',
+                'user' => $user,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to upload resume. Please try again.',
+            ], 500);
         }
     }
 }

@@ -221,6 +221,7 @@ export const JobDetailsPage = ({ job, matchData, onBack, onApply, application, o
 
 // --- 3. SEEKER DASHBOARD (Main) ---
 const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, initialTab, onUpdateProfile, onUpdateTrainings, onReviewCompany, onViewJob, onCancelApplication, onNavigate }) => {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
   const [activeTab, setActiveTab] = useState(initialTab || 'overview');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -248,7 +249,7 @@ const uploadResume = async (email, file) => {
     data.append('resumeFile', file); 
 
     try {
-        const response = await fetch('http://localhost:5000/api/upload/resume', {
+        const response = await fetch(`${API_BASE_URL}/api/upload/resume`, {
             method: 'POST',
             body: data, 
         });
@@ -309,7 +310,7 @@ const handleDownloadResume = () => {
     if (filePath) {
         const fileNamePart = profile.name || "Resume_File"; 
         const fileExtension = filePath.split('/').pop() || "resume.pdf";
-        const publicUrl = `http://localhost:5000/${filePath}`;
+        const publicUrl = `${API_BASE_URL}/${filePath}`;
         const link = document.createElement('a');
         link.href = publicUrl;
         link.download = `${fileNamePart}_Resume_${fileExtension}`;
@@ -435,7 +436,9 @@ const handleDownloadResume = () => {
                             <p className="text-gray-500 text-xs font-bold uppercase">Birthday</p>
                         </div>
                         <p className="font-bold text-gray-900">
-                            {profile.bdayMonth} {profile.bdayDay}, {profile.bdayYear}
+                            {profile.bdayMonth && profile.bdayDay && profile.bdayYear
+                                ? `${profile.bdayMonth} ${profile.bdayDay}, ${profile.bdayYear}`
+                                : 'N/A'}
                         </p>
                     </div>
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">

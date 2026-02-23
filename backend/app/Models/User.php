@@ -19,9 +19,20 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'company_name',
+        'qc_id',
+        'bday_month',
+        'bday_day',
+        'bday_year',
+        'gender',
+        'is_qc_resident',
         'email',
+        'role',
         'password',
         'otp',
+        'is_verified',
+        'uploaded_docs',
+        'resume_path',
     ];
 
     /**
@@ -44,6 +55,9 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_verified' => 'boolean',
+            'uploaded_docs' => 'boolean',
+            'is_qc_resident' => 'boolean',
         ];
     }
 }

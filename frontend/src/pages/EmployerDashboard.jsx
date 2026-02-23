@@ -216,7 +216,9 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                     <p className="text-xs font-bold text-gray-400 uppercase">Birthday</p>
                                 </div>
                                 <p className="font-semibold text-gray-800">
-                                    {viewApplicant.bdayMonth} {viewApplicant.bdayDay}, {viewApplicant.bdayYear}
+                                    {viewApplicant.bdayMonth && viewApplicant.bdayDay && viewApplicant.bdayYear
+                                        ? `${viewApplicant.bdayMonth} ${viewApplicant.bdayDay}, ${viewApplicant.bdayYear}`
+                                        : 'N/A'}
                                 </p>
                             </div>
 

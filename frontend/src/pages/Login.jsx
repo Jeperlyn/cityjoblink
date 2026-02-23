@@ -102,6 +102,10 @@ const Login = ({ onLogin }) => {
     if (passErr) return passErr;
 
     // 5. Seeker Specific (QC ID vs Other ID)
+    if (role === 'Seeker' && !formData.gender) {
+        return "Please select your gender.";
+    }
+
     if (role === 'Seeker' && !formData.qcIdFile) {
         return formData.isQcResident ? "Submission of QCitizen ID is required for residents." : "Verification ID (Barangay/Gov ID) is required.";
     }
@@ -177,6 +181,15 @@ const handleSubmit = async (e) => {
                 body: JSON.stringify({
                     firstName: formData.firstName,
                     lastName: formData.lastName,
+                    middleName: formData.middleName,
+                    suffix: formData.suffix,
+                    companyName: formData.companyName,
+                    qcId: formData.qcId,
+                    bdayMonth: formData.bdayMonth,
+                    bdayDay: formData.bdayDay,
+                    bdayYear: formData.bdayYear,
+                    gender: formData.gender,
+                    isQcResident: formData.isQcResident,
                     email: formData.email,
                     password: formData.password,
                     role: role
@@ -188,7 +201,8 @@ const handleSubmit = async (e) => {
             if (regData.status === 'success') {
                 // Trigger the OTP screen
                 setIsOtpStep(true); 
-                setModal({ type: 'success', title: 'Code Sent!', message: `We sent a verification code to ${formData.email}.` });
+                const successMessage = regData.message || `We sent a verification code to ${formData.email}.`;
+                setModal({ type: 'success', title: 'Code Sent!', message: successMessage });
             } else {
                 setModal({ type: 'error', title: 'Registration Error', message: regData.message || "Email might already be taken." });
             }
@@ -303,6 +317,21 @@ const handleSubmit = async (e) => {
                                 <select className="flex-1 p-2 border border-gray-300 rounded-lg bg-white text-sm" value={formData.bdayDay} onChange={e => setFormData({...formData, bdayDay: e.target.value})}>{days.map(d => <option key={d} value={d}>{d}</option>)}</select>
                                 <select className="flex-1 p-2 border border-gray-300 rounded-lg bg-white text-sm" value={formData.bdayYear} onChange={e => setFormData({...formData, bdayYear: e.target.value})}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
                             </div>
+                        </div>
+
+                        <div className="pt-1">
+                            <label className="text-xs text-gray-500 font-bold ml-1">Gender</label>
+                            <select
+                                required
+                                className="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm mt-1"
+                                value={formData.gender}
+                                onChange={e => setFormData({...formData, gender: e.target.value})}
+                            >
+                                <option value="">Select gender</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Binary">Binary</option>
+                            </select>
                         </div>
                         
                         {/* ID SECTION */}

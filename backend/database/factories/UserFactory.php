@@ -25,9 +25,20 @@ class UserFactory extends Factory
     {
         return [
             'name' => fake()->name(),
+            'company_name' => null,
+            'qc_id' => fake()->optional()->numerify('QC########'),
+            'bday_month' => fake()->optional()->randomElement(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']),
+            'bday_day' => fake()->optional()->numberBetween(1, 28),
+            'bday_year' => fake()->optional()->numberBetween(1970, 2005),
+            'gender' => fake()->optional()->randomElement(['Male', 'Female', 'Binary']),
+            'is_qc_resident' => true,
             'email' => fake()->unique()->safeEmail(),
+            'role' => 'Seeker',
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
+            'otp' => null,
+            'is_verified' => true,
+            'uploaded_docs' => false,
             'remember_token' => Str::random(10),
         ];
     }

@@ -38,6 +38,24 @@ const formatTimeAgo = (timestamp) => {
     return `${days}d ago`;
 };
 
+const normalizeUserProfile = (rawUser) => {
+    if (!rawUser) return rawUser;
+
+    return {
+        ...rawUser,
+        companyName: rawUser.companyName || rawUser.company_name || null,
+        qcId: rawUser.qcId || rawUser.qc_id || '',
+        bdayMonth: rawUser.bdayMonth || rawUser.bday_month || '',
+        bdayDay: rawUser.bdayDay || rawUser.bday_day || '',
+        bdayYear: rawUser.bdayYear || rawUser.bday_year || '',
+        gender: rawUser.gender || '',
+        resumePath: rawUser.resumePath || rawUser.resume_path || null,
+        isQcResident: typeof rawUser.isQcResident === 'boolean'
+            ? rawUser.isQcResident
+            : (typeof rawUser.is_qc_resident === 'boolean' ? rawUser.is_qc_resident : true),
+    };
+};
+
 // MESSAGES PANEL (Walang pagbabago)
 const MessagesPanel = ({ messages, user, users, onBack, onSendMessage, onRead, initialChatId }) => {
     const [activeChatId, setActiveChatId] = useState(initialChatId || null);
@@ -199,7 +217,7 @@ const App = () => {
         const storedUser = localStorage.getItem('user');
         if (storedUser) {
             try {
-                return JSON.parse(storedUser);
+                return normalizeUserProfile(JSON.parse(storedUser));
             } catch (e) {
                 console.error("Failed to parse user from localStorage", e);
                 localStorage.removeItem('user'); 
@@ -213,7 +231,7 @@ const App = () => {
     const [currentView, setCurrentView] = useState(() => {
         const storedUser = localStorage.getItem('user');
         if (storedUser) {
-            const user = JSON.parse(storedUser);
+            const user = normalizeUserProfile(JSON.parse(storedUser));
             if (user.role === 'Admin') return 'admin-dash';
             if (user.role === 'Employer') return 'employer-dash';
             if (user.role === 'Seeker') return 'matchmaker';
@@ -255,7 +273,7 @@ const App = () => {
 
         if (isAutoLogin && userDataStr) {
             try {
-                const userData = JSON.parse(decodeURIComponent(userDataStr));
+                const userData = normalizeUserProfile(JSON.parse(decodeURIComponent(userDataStr)));
                 // 💡 NEW: I-store din sa localStorage pagkatapos ng auto-login
                 localStorage.setItem('user', JSON.stringify(userData)); 
 
@@ -327,12 +345,13 @@ const App = () => {
 
     const handleLogin = (type, data) => {
         if (type === 'login_success' || type === 'auto_login') {
-            setUser(data); 
+            const normalizedUser = normalizeUserProfile(data);
+            setUser(normalizedUser); 
             // 💡 NEW: I-save sa localStorage para manatiling naka-login pagka-refresh
-            localStorage.setItem('user', JSON.stringify(data)); 
+            localStorage.setItem('user', JSON.stringify(normalizedUser)); 
             
-            if (data.role === 'Admin') setCurrentView('admin-dash');
-            else if (data.role === 'Employer') setCurrentView('employer-dash');
+            if (normalizedUser.role === 'Admin') setCurrentView('admin-dash');
+            else if (normalizedUser.role === 'Employer') setCurrentView('employer-dash');
             else setCurrentView('matchmaker'); 
         } 
     };
@@ -346,10 +365,11 @@ const App = () => {
     };
 
     const handleUpdateProfile = (updated) => { 
-        setUser(updated); 
-        setUsers(users.map(u => u.id === updated.id ? updated : u)); 
+        const normalizedUser = normalizeUserProfile(updated);
+        setUser(normalizedUser); 
+        setUsers(users.map(u => u.id === normalizedUser.id ? normalizedUser : u)); 
         // 💡 NEW: I-update rin sa localStorage ang profile
-        localStorage.setItem('user', JSON.stringify(updated));
+        localStorage.setItem('user', JSON.stringify(normalizedUser));
     };
     
     const handleApply = (jobId) => {
