@@ -86,16 +86,16 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-4 md:p-6">
        
        {view === 'dashboard' && (
          <>
            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
                     <h3 className="font-bold text-lg flex items-center gap-2 text-gray-900">
                         <Building className="text-cyan-600"/> Company Information
                     </h3>
-                    <button onClick={()=>setView('post')} className="bg-black text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-gray-800 transition-colors flex items-center gap-2">
+                    <button onClick={()=>setView('post')} className="bg-black text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 w-full sm:w-auto">
                         <Edit3 size={16}/> Post New Job
                     </button>
                 </div>
@@ -162,7 +162,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
             {myJobs.length === 0 ? (<div className="text-center py-12 bg-gray-50 rounded border border-dashed text-gray-400">You haven't posted any jobs yet.</div>) : (myJobs.map(j => (<div key={j.id} className="bg-white p-6 rounded-xl border shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex justify-between items-start"><div><h3 className="font-bold text-xl text-gray-900">{j.title}</h3><div className="flex gap-2 mt-1 mb-2"><span className={`text-xs px-2 py-1 rounded font-bold uppercase ${j.status === 'Open' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{j.status}</span><span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">{j.type}</span><span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">{j.salary}</span></div></div><div className="flex gap-2"><button onClick={()=>setExpandedJob(expandedJob === j.id ? null : j.id)} className="text-sm border px-3 py-2 rounded-lg font-medium hover:bg-gray-50 flex items-center gap-1">{expandedJob===j.id?<ChevronUp size={16}/>:<ChevronDown size={16}/>} Details</button><button onClick={()=>handleEditJob(j)} className="text-sm bg-black text-white px-3 py-2 rounded-lg font-medium hover:bg-gray-800 flex items-center gap-1"><Edit3 size={16}/> Edit</button></div></div>
                     {expandedJob === j.id && <div className="mt-4 pt-4 border-t text-sm text-gray-600 bg-gray-50 p-4 rounded"><p className="font-bold mb-1">Description:</p>{j.description}</div>}
-                    <div className="mt-4 border-t pt-4"><h4 className="font-bold text-xs text-gray-500 uppercase mb-3 flex items-center gap-1"><User size={14}/> Applicants ({applications.filter(a=>a.jobId===j.id).length})</h4>{applications.filter(a=>a.jobId===j.id).length === 0 ? <p className="text-sm text-gray-400 italic">No applicants yet.</p> : applications.filter(a=>a.jobId===j.id).map(a => { const s = seekers.find(u=>u.id===a.seekerId); const isCancelled = a.status === 'Cancelled'; return (<div key={a.id} className={`flex flex-col gap-2 p-3 mt-2 rounded-lg border transition-colors ${isCancelled ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-white border-gray-200 shadow-sm'}`}><div className="flex flex-wrap justify-between items-center gap-2"><div className="flex items-center gap-3"><div className={`w-8 h-8 flex items-center justify-center rounded-full ${isCancelled ? 'bg-gray-300 text-gray-500' : 'bg-blue-100 text-blue-600'}`}>{isCancelled ? <AlertCircle size={16}/> : <User size={16}/>}</div><div><span className={`font-bold text-sm block ${isCancelled ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{s?.name}</span><span className="text-xs text-gray-500">{a.date}</span>{isCancelled && <span className="text-xs text-red-500 font-bold ml-2">(Withdrew Application)</span>}</div></div><div className="flex gap-2 items-center"><button onClick={() => !isCancelled && handleMessageClick(s)} disabled={isCancelled} title="Message Applicant" className={`p-2 rounded-lg ${isCancelled ? 'text-gray-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}><MessageCircle size={18}/></button><button onClick={()=> !isCancelled && setViewApplicant(s)} disabled={isCancelled} className={`text-xs border px-3 py-2 rounded-lg font-medium ${isCancelled ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white hover:bg-gray-50 text-gray-700'}`}>View Resume</button><select className={`text-xs border rounded-lg p-2 font-medium focus:outline-none ${isCancelled ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'}`} value={a.status} disabled={isCancelled} onChange={(e)=>{ const newStatus = e.target.value; let reason = ""; if (newStatus === 'Rejected') { reason = prompt("Please state the reason for rejection:"); if (reason === null) return; } onUpdateStatus(a.id, newStatus, reason); }}>{isCancelled ? <option>Cancelled</option> : (<><option>Pending</option><option>Viewing</option><option>Interview</option><option>Hired</option><option>Rejected</option></>)}</select></div></div>{isCancelled && a.cancellationReason && (<div className="text-xs text-gray-600 bg-gray-50 p-2 rounded border border-gray-200 italic">"<span className="font-bold">Reason:</span> {a.cancellationReason}"</div>)}</div>) })}</div>
+                    <div className="mt-4 border-t pt-4"><h4 className="font-bold text-xs text-gray-500 uppercase mb-3 flex items-center gap-1"><User size={14}/> Applicants ({applications.filter(a=>a.jobId===j.id).length})</h4>{applications.filter(a=>a.jobId===j.id).length === 0 ? <p className="text-sm text-gray-400 italic">No applicants yet.</p> : applications.filter(a=>a.jobId===j.id).map(a => { const s = seekers.find(u=>u.id===a.seekerId); const isCancelled = a.status === 'Cancelled'; return (<div key={a.id} className={`flex flex-col gap-2 p-3 mt-2 rounded-lg border transition-colors ${isCancelled ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-white border-gray-200 shadow-sm'}`}><div className="flex flex-wrap justify-between items-center gap-2"><div className="flex items-center gap-3 min-w-0"><div className={`w-8 h-8 flex items-center justify-center rounded-full ${isCancelled ? 'bg-gray-300 text-gray-500' : 'bg-blue-100 text-blue-600'}`}>{isCancelled ? <AlertCircle size={16}/> : <User size={16}/>}</div><div className="min-w-0"><span className={`font-bold text-sm block truncate ${isCancelled ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{s?.name}</span><span className="text-xs text-gray-500">{a.date}</span>{isCancelled && <span className="text-xs text-red-500 font-bold ml-2">(Withdrew Application)</span>}</div></div><div className="flex flex-wrap gap-2 items-center w-full sm:w-auto"><button onClick={() => !isCancelled && handleMessageClick(s)} disabled={isCancelled} title="Message Applicant" className={`p-2 rounded-lg ${isCancelled ? 'text-gray-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}><MessageCircle size={18}/></button><button onClick={()=> !isCancelled && setViewApplicant(s)} disabled={isCancelled} className={`text-xs border px-3 py-2 rounded-lg font-medium ${isCancelled ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white hover:bg-gray-50 text-gray-700'}`}>View Resume</button><select className={`text-xs border rounded-lg p-2 font-medium focus:outline-none ${isCancelled ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-white text-gray-700 hover:bg-gray-50'} w-full sm:w-auto`} value={a.status} disabled={isCancelled} onChange={(e)=>{ const newStatus = e.target.value; let reason = ""; if (newStatus === 'Rejected') { reason = prompt("Please state the reason for rejection:"); if (reason === null) return; } onUpdateStatus(a.id, newStatus, reason); }}>{isCancelled ? <option>Cancelled</option> : (<><option>Pending</option><option>Viewing</option><option>Interview</option><option>Hired</option><option>Rejected</option></>)}</select></div></div>{isCancelled && a.cancellationReason && (<div className="text-xs text-gray-600 bg-gray-50 p-2 rounded border border-gray-200 italic">"<span className="font-bold">Reason:</span> {a.cancellationReason}"</div>)}</div>) })}</div>
                 </div>))
             )}
           </div>
@@ -191,7 +191,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                             <p className="text-lg font-bold text-gray-900">{viewApplicant.name}</p>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                                 <div className="flex items-center gap-2 mb-1">
                                     <CreditCard size={14} className="text-gray-400"/>
@@ -209,7 +209,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                                 <div className="flex items-center gap-2 mb-1">
                                     <Calendar size={14} className="text-gray-400"/>
@@ -234,7 +234,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                </div>
 
                {/* Footer with Download Button */}
-               <div className="p-4 border-t bg-white flex items-center justify-between">
+               <div className="p-4 border-t bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                    <div className="flex items-center gap-2 text-sm text-gray-500">
                        <FileText size={16} className="text-red-500"/> 
                        <span className="truncate max-w-[200px] font-medium">{viewApplicant.resumeFile || "No Resume File"}</span>

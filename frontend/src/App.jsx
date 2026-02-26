@@ -50,6 +50,7 @@ const normalizeUserProfile = (rawUser) => {
         bdayYear: rawUser.bdayYear || rawUser.bday_year || '',
         gender: rawUser.gender || '',
         resumePath: rawUser.resumePath || rawUser.resume_path || null,
+        skills: rawUser.skills || rawUser.parsedSkills || rawUser.parsed_skills || [],
         isQcResident: typeof rawUser.isQcResident === 'boolean'
             ? rawUser.isQcResident
             : (typeof rawUser.is_qc_resident === 'boolean' ? rawUser.is_qc_resident : true),

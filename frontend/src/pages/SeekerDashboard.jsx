@@ -256,7 +256,7 @@ const uploadResume = async (email, file) => {
         const result = await response.json();
         
         if (result.status === 'success') {
-            return result.user; 
+            return result;
         } else {
             setUploadError(result.message);
             return null;
@@ -286,16 +286,23 @@ const handleFileUpload = async (e) => {
         return;
     }
 
-    const updatedUserData = await uploadResume(profile.email, file);
+    const uploadResult = await uploadResume(profile.email, file);
     setIsUploading(false);
 
-    if (updatedUserData) {
+    if (uploadResult?.user) {
+        const parsedSkills = uploadResult.extracted_skills || [];
         onUpdateProfile({ 
             ...profile, 
-            ...updatedUserData,
+            ...uploadResult.user,
             name: profile.name,
             resumeFile: file.name,
+            skills: parsedSkills.length > 0 ? parsedSkills : (profile.skills || []),
         });
+
+        if (uploadResult.message) {
+            alert(uploadResult.message);
+        }
+
         setShowUploadModal(true);
         setCurrentFile(null);
     }
@@ -329,7 +336,7 @@ const handleDownloadResume = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-4 md:p-6">
       
       <input 
         type="file" 
@@ -339,19 +346,19 @@ const handleDownloadResume = () => {
         onChange={handleFileUpload} 
       />
 
-      <div className="flex justify-between items-end mb-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2 mb-6">
         <div>
-            <h1 className="text-3xl font-bold">My Dashboard</h1>
-            <p className="text-gray-500">Welcome back, {profile.name || profile.email || 'Job Seeker'}</p>
+                        <h1 className="text-2xl md:text-3xl font-bold">My Dashboard</h1>
+                        <p className="text-sm md:text-base text-gray-500">Welcome back, {profile.name || profile.email || 'Job Seeker'}</p>
         </div>
       </div>
 
-      <div className="flex gap-4 mb-6 border-b overflow-x-auto">
+            <div className="flex gap-2 md:gap-4 mb-6 border-b overflow-x-auto pb-1">
         {['overview', 'profile & resume', 'trainings', 'jobfairs'].map(tab => (
             <button 
                 key={tab} 
                 onClick={() => setActiveTab(tab)} 
-                className={`pb-2 px-4 font-medium capitalize whitespace-nowrap ${activeTab === tab ? 'border-b-2 border-cyan-500 text-cyan-600' : 'text-gray-500'}`}
+                                className={`pb-2 px-3 md:px-4 text-sm md:text-base font-medium capitalize whitespace-nowrap rounded-t-lg ${activeTab === tab ? 'border-b-2 border-cyan-500 text-cyan-600 bg-cyan-50/70' : 'text-gray-500 hover:bg-gray-50'}`}
             >
                 {tab === 'jobfairs' ? 'My Job Fairs' : tab === 'trainings' ? 'My Trainings' : tab}
             </button>
@@ -367,7 +374,7 @@ const handleDownloadResume = () => {
                 const canCancel = ['Applied', 'Interviewed'].includes(app.status);
 
                 return (
-                    <div key={app.id} className="flex justify-between items-start border-b pb-4 mb-4 last:border-0">
+                    <div key={app.id} className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 border-b pb-4 mb-4 last:border-0">
                         <div className="flex-1">
                             <h4 className="font-bold text-lg">{job?.title}</h4>
                             <p className="text-sm text-gray-500 mb-1">{job?.company || "Company Confidential"}</p>
@@ -386,7 +393,7 @@ const handleDownloadResume = () => {
                             )}
                         </div>
                         
-                        <div className="text-right flex flex-col items-end gap-2">
+                        <div className="text-left sm:text-right flex flex-col sm:items-end gap-2">
                             {/* ✅ FIXED: Badge Colors for New Statuses */}
                             <span className={`block text-sm font-bold px-3 py-1 rounded-full ${
                                 app.status === 'Hired' ? 'bg-green-100 text-green-800' :
@@ -461,17 +468,17 @@ const handleDownloadResume = () => {
                     </div>
                 )}
                 {profile.resumePath ? ( 
-                    <div className="flex items-center justify-between bg-green-50 p-4 rounded-lg border border-green-200">
-                        <div className="flex items-center gap-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-green-50 p-4 rounded-lg border border-green-200">
+                        <div className="flex items-center gap-4 min-w-0">
                             <div className="bg-white p-2 rounded shadow-sm">
                                 <FileText size={32} className="text-red-500"/>
                             </div>
-                            <div>
+                            <div className="min-w-0">
                                 <p className="font-bold text-gray-800">{profile.resumePath?.split('/').pop() || 'File on Record'}</p>
                                 <p className="text-xs text-green-700">Ready for applications</p>
                             </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             <button onClick={handleDownloadResume} className="text-sm bg-blue-600 text-white px-3 py-1 rounded font-bold hover:bg-blue-700 flex items-center gap-1"><Download size={14}/> Download</button>
                             <button onClick={triggerFileInput} className="text-sm text-blue-600 font-bold hover:underline">Replace</button>
                             <button onClick={()=>onUpdateProfile({...profile, resumePath: null})} className="text-sm text-red-500 font-bold hover:underline">Remove</button>
@@ -488,14 +495,14 @@ const handleDownloadResume = () => {
                 )}
             </div>
 
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl shadow-lg text-white p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl shadow-lg text-white p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                 <div>
                     <h3 className="text-2xl font-bold mb-2">Don't have a resume?</h3>
                     <p className="text-blue-100 max-w-md">Create a professional resume in minutes using our AI-powered builder. Choose from multiple templates, download the PDF, and upload it here.</p>
                 </div>
                 <button 
                     onClick={() => onNavigate('resume-builder')} 
-                    className="bg-white text-blue-700 px-6 py-3 rounded-lg font-bold shadow-md hover:bg-gray-100 transition flex items-center gap-2 whitespace-nowrap"
+                    className="bg-white text-blue-700 px-6 py-3 rounded-lg font-bold shadow-md hover:bg-gray-100 transition flex items-center gap-2 whitespace-nowrap w-full sm:w-auto justify-center"
                 >
                     <Edit3 size={18}/> Open Resume Builder
                 </button>

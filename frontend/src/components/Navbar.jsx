@@ -13,13 +13,15 @@ const Navbar = ({ user, onLogout, onNavigate, messages, unreadNotifs, currentVie
 
   const getLinkClass = (viewName) => {
     const isActive = currentView === viewName || (viewName === 'dashboard' && (currentView === 'seeker-dash' || currentView === 'employer-dash' || currentView === 'admin-dash'));
-    return isActive ? "text-cyan-400 font-bold border-b-2 border-cyan-400 pb-1" : "hover:text-cyan-400 transition-colors pb-1 border-b-2 border-transparent";
+    return isActive
+      ? "text-cyan-300 font-bold bg-white/10 px-3 py-1.5 rounded-lg"
+      : "hover:text-cyan-200 hover:bg-white/5 transition-all px-3 py-1.5 rounded-lg";
   };
 
   return (
-    <header className="bg-black text-white py-4 px-6 flex justify-between items-center sticky top-0 z-50 shadow-md">
+    <header className="bg-slate-950/90 text-white py-4 px-6 flex justify-between items-center sticky top-0 z-50 shadow-xl border-b border-white/10 backdrop-blur-md">
       <div className="font-bold text-xl md:text-2xl tracking-tight cursor-pointer flex items-center gap-2" onClick={() => user?.role === 'Seeker' || !user ? onNavigate('home') : handleDashboardClick()}>
-        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
           <Building2 size={18} className="text-white" />
         </div>
         <span className="hidden md:inline">CityJobLink</span>
@@ -36,11 +38,11 @@ const Navbar = ({ user, onLogout, onNavigate, messages, unreadNotifs, currentVie
           </>
         )}
         {!user ? (
-          <button onClick={() => onNavigate('login')} className="text-white bg-cyan-600 hover:bg-cyan-700 px-4 py-2 rounded-md font-bold transition-colors">Login / Sign Up</button>
+          <button onClick={() => onNavigate('login')} className="text-white bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-cyan-500/30">Login / Sign Up</button>
         ) : (
           <>
             <button onClick={handleDashboardClick} className={getLinkClass('dashboard')}>Dashboard</button>
-            <div className="flex items-center gap-4 pl-4 border-l border-gray-700">
+            <div className="flex items-center gap-4 pl-4 border-l border-white/20">
               
               <button onClick={() => onNavigate('notifications')} className={`relative hover:text-white ${currentView === 'notifications' ? 'text-white' : 'text-gray-400'}`}>
                 <Bell size={20} />

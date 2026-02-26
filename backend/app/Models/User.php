@@ -33,6 +33,8 @@ class User extends Authenticatable
         'is_verified',
         'uploaded_docs',
         'resume_path',
+        'resume_text',
+        'parsed_skills',
     ];
 
     /**
@@ -58,6 +60,7 @@ class User extends Authenticatable
             'is_verified' => 'boolean',
             'uploaded_docs' => 'boolean',
             'is_qc_resident' => 'boolean',
+            'parsed_skills' => 'array',
         ];
     }
 }

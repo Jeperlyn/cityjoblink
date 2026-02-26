@@ -83,19 +83,19 @@ const AdminDashboard = ({ employers, onVerifyEmployer, jobFairs, onAddJobFair })
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-6 min-h-screen bg-gray-50 relative">
-      <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Admin Portal</h1>
-          <div className="flex bg-white rounded-lg p-1 shadow-sm border">
+        <div className="max-w-7xl mx-auto p-4 md:p-6 min-h-screen bg-gray-50 relative">
+            <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-8">
+                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Admin Portal</h1>
+                    <div className="flex w-full lg:w-auto bg-white rounded-lg p-1 shadow-sm border overflow-x-auto">
               <button 
                 onClick={() => setActiveTab('employers')} 
-                className={`px-4 py-2 rounded-md text-sm font-bold transition-colors ${activeTab === 'employers' ? 'bg-black text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+                                className={`px-4 py-2 rounded-md text-sm font-bold transition-colors whitespace-nowrap ${activeTab === 'employers' ? 'bg-black text-white' : 'text-gray-500 hover:bg-gray-100'}`}
               >
                   <Users size={16} className="inline mr-2"/> Verify Employers
               </button>
               <button 
                 onClick={() => setActiveTab('jobfairs')} 
-                className={`px-4 py-2 rounded-md text-sm font-bold transition-colors ${activeTab === 'jobfairs' ? 'bg-black text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+                                className={`px-4 py-2 rounded-md text-sm font-bold transition-colors whitespace-nowrap ${activeTab === 'jobfairs' ? 'bg-black text-white' : 'text-gray-500 hover:bg-gray-100'}`}
               >
                   <Calendar size={16} className="inline mr-2"/> Manage Job Fairs
               </button>
@@ -104,9 +104,10 @@ const AdminDashboard = ({ employers, onVerifyEmployer, jobFairs, onAddJobFair })
 
       {/* --- TAB 1: EMPLOYER VERIFICATION --- */}
       {activeTab === 'employers' && (
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
            <div className="p-6 border-b"><h2 className="font-bold text-lg">Pending Verifications</h2></div>
-           <table className="w-full text-sm text-left">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm text-left">
               <thead className="bg-gray-50 border-b text-gray-600 uppercase text-xs">
                 <tr>
                     <th className="px-6 py-3">Company</th>
@@ -149,12 +150,13 @@ const AdminDashboard = ({ employers, onVerifyEmployer, jobFairs, onAddJobFair })
                 )}
               </tbody>
            </table>
+              </div>
         </div>
       )}
 
       {/* --- TAB 2: MANAGE JOB FAIRS --- */}
       {activeTab === 'jobfairs' && (
-          <div className="grid lg:grid-cols-2 gap-8">
+          <div className="grid lg:grid-cols-2 gap-6 lg:gap-8">
               {/* LEFT: FORM */}
               <div className="bg-white p-6 rounded-xl shadow-sm border h-fit">
                   <h2 className="font-bold text-xl mb-4 flex items-center gap-2"><Plus size={20}/> Create New Job Fair</h2>
@@ -187,7 +189,7 @@ const AdminDashboard = ({ employers, onVerifyEmployer, jobFairs, onAddJobFair })
                               <input 
                                   type="file" 
                                   accept="image/*"
-                                  className="w-full border p-2 rounded bg-gray-50 text-sm cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100"
+                                  className="w-full border p-2 rounded bg-gray-50 text-sm cursor-pointer file:mr-2 sm:file:mr-4 file:py-2 file:px-3 sm:file:px-4 file:rounded-full file:border-0 file:text-xs sm:file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100"
                                   onChange={handleImageChange}
                               />
                           </div>
@@ -209,7 +211,7 @@ const AdminDashboard = ({ employers, onVerifyEmployer, jobFairs, onAddJobFair })
                   <div className="bg-gray-100 p-4 rounded-xl border border-dashed border-gray-300">
                       <p className="text-center text-xs font-bold text-gray-400 uppercase mb-4">Seeker View Preview</p>
                       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-                          <div className="h-40 bg-gray-200 relative">
+                              <div className="h-40 bg-gray-200 relative">
                               <img src={getPreviewImageUrl()} alt="Preview" className="w-full h-full object-cover"/>
                           </div>
                           <div className="p-6">

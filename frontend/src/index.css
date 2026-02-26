@@ -2,6 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #f9fafb; /* gray-50 */
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at top right, rgba(34, 211, 238, 0.12), transparent 28%),
+      radial-gradient(circle at bottom left, rgba(99, 102, 241, 0.1), transparent 35%),
+      #f8fafc;
+    color: #0f172a;
+  }
+
+  ::selection {
+    background: rgba(8, 145, 178, 0.2);
+    color: #0f172a;
+  }
+}
+
+@layer utilities {
+  .glass-surface {
+    @apply bg-white/70 backdrop-blur-md border border-white/50 shadow-lg;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #0ea5e9, #0284c7);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #0284c7, #0369a1);
 }
