@@ -92,8 +92,8 @@ export const INITIAL_JOBS = [
 ];
 
 export const INITIAL_TRAININGS = [
-  { id: 1, title: "Basic English Proficiency", provider: "TESDA", date: "Oct 25 - Nov 25", slots: 50, type: "Online", description: "A comprehensive 4-week course.", registeredUsers: [] },
-  { id: 2, title: "Call Center 101", provider: "QC Local Gov", date: "Nov 02 - Nov 05", slots: 30, type: "On-site", description: "Intensive training for aspiring agents.", registeredUsers: [] }
+  { id: 1, title: "Basic English Proficiency", provider: "TESDA", date: "Oct 25 - Nov 25", location: "Online Class", slots: 50, type: "Online", description: "A comprehensive 4-week course.", registeredUsers: [] },
+  { id: 2, title: "Call Center 101", provider: "QC Local Gov", date: "Nov 02 - Nov 05", location: "QC Local Government Building", slots: 30, type: "On-site", description: "Intensive training for aspiring agents.", registeredUsers: [] }
 ];
 
 export const INITIAL_JOB_FAIRS = [

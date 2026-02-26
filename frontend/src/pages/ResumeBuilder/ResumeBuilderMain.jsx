@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Trash2, Plus, Download, ChevronLeft } from "lucide-react";
+import { Trash2, Plus, Download, ChevronLeft, Upload } from "lucide-react";
 
 // UI Components
 // Note: Siguraduhing nagawa mo na ang mga file na ito sa components/ui folder
@@ -9,14 +9,18 @@ import { Textarea } from "./components/ui/textarea.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card.jsx";
 import ResumePreview from "./components/ui/ResumePreview.jsx";
 
-export default function ResumeBuilderMain({ onBack, user }) {
+export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
   const fileInputRef = useRef(null);
+  const resumeFileInputRef = useRef(null);
   const resumePreviewRef = useRef(null);
 
   const [template, setTemplate] = useState("modern");
   const [photo, setPhoto] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
   const [showPhotoUrl, setShowPhotoUrl] = useState(false);
+  const [uploadedResume, setUploadedResume] = useState(null);
+  const [resumeFile, setResumeFile] = useState(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Initial State
   const [personalInfo, setPersonalInfo] = useState({
@@ -98,6 +102,36 @@ export default function ResumeBuilderMain({ onBack, user }) {
     setPhoto("");
     setPhotoUrl("");
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleResumeUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.type !== 'application/pdf' && !file.type.includes('word') && file.type !== 'application/msword') {
+        alert('Only PDF and Word documents allowed');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setResumeFile({ name: file.name, data: reader.result, type: file.type });
+        setUploadedResume(file.name);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeResume = () => {
+    setResumeFile(null);
+    setUploadedResume(null);
+    if (resumeFileInputRef.current) resumeFileInputRef.current.value = "";
+  };
+
+  const handleSaveResume = () => {
+    if (onSaveResume && resumeFile) {
+      onSaveResume({ resumeFile: resumeFile.name, resumeData: resumeFile.data, resumeType: resumeFile.type });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    }
   };
 
   const updatePersonalInfo = (field, value) => {
@@ -226,10 +260,21 @@ export default function ResumeBuilderMain({ onBack, user }) {
               <p className="text-xs text-gray-500">Create your resume in minutes</p>
             </div>
           </div>
-          <Button onClick={handleDownload} variant="outline" size="sm" className="flex items-center gap-2 border-blue-600 text-blue-600 hover:bg-blue-50">
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Download PDF</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleDownload} variant="outline" size="sm" className="flex items-center gap-2 border-blue-600 text-blue-600 hover:bg-blue-50">
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Download PDF</span>
+            </Button>
+            {resumeFile && (
+              <>
+                {saveSuccess && <span className="text-xs font-bold text-green-600">✓ Saved</span>}
+                <Button onClick={handleSaveResume} variant="default" size="sm" className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white">
+                  <Upload className="w-4 h-4" />
+                  <span className="hidden sm:inline">Save Resume</span>
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -238,6 +283,55 @@ export default function ResumeBuilderMain({ onBack, user }) {
           
           {/* LEFT SIDE: Editor Forms */}
           <div className="lg:col-span-3 space-y-6">
+            
+            {/* Upload Resume Section */}
+            <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white border border-blue-100">
+              <CardHeader className="border-b border-blue-200">
+                <CardTitle className="text-lg text-gray-900">Upload Existing Resume</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6">
+                {!resumeFile ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-600">Upload your existing resume (PDF or Word) for employers to assess</p>
+                    <button
+                      onClick={() => resumeFileInputRef.current?.click()}
+                      className="w-full border-2 border-dashed border-blue-300 rounded-lg p-6 text-center hover:border-blue-600 hover:bg-blue-100/50 transition-colors"
+                    >
+                      <Upload className="w-8 h-8 mx-auto mb-2 text-blue-400" />
+                      <p className="font-semibold text-gray-700">Click to upload resume</p>
+                      <p className="text-xs text-gray-500">PDF or Word (.doc, .docx)</p>
+                    </button>
+                    <input
+                      ref={resumeFileInputRef}
+                      type="file"
+                      accept=".pdf,.doc,.docx"
+                      onChange={handleResumeUpload}
+                      className="hidden"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="bg-white p-4 rounded-lg border border-green-200 border-2 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-green-100 rounded flex items-center justify-center">
+                          <span className="font-bold text-green-700">📄</span>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm text-gray-900 truncate">{resumeFile.name}</p>
+                          <p className="text-xs text-green-600">Ready to save</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={removeResume}
+                        className="p-2 hover:bg-red-100 text-red-600 rounded transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
             
             {/* Template Selector */}
             <Card className="border-0 shadow-sm">

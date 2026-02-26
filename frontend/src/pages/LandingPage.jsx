@@ -104,6 +104,13 @@ export const PublicListings = ({ type, data, onRegister, user }) => (
                     </div>
                   )}
                 </div>
+
+                {type === 'trainings' && item.slots != null && (
+                  <div className="flex items-center gap-2">
+                    <Users size={16} className="text-cyan-600" />
+                    <span className="font-medium">{item.slots} slots available</span>
+                  </div>
+                )}
               </div>
 
               {/* DESCRIPTION */}

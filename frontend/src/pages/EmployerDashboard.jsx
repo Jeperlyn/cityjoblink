@@ -73,15 +73,12 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
   };
 
   const handleDownloadResume = () => {
-      if (viewApplicant && viewApplicant.resumeData) {
-          const link = document.createElement('a');
-          link.href = viewApplicant.resumeData;
-          link.download = viewApplicant.resumeFile || "resume_download.pdf";
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+      if (viewApplicant && viewApplicant.resumeFile) {
+          // For production, this should fetch from a backend endpoint
+          // For now, show a message that resume download functionality requires backend integration
+          alert('Resume download requires backend file storage integration. Contact admin to set up AWS S3 or similar service.');
       } else {
-          alert("Resume file content not found or corrupted.");
+          alert('Resume file not available.');
       }
   };
 

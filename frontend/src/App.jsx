@@ -2,29 +2,51 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronLeft, Send, MessageCircle, User, AlertCircle, FileText, X, LogIn, AlertTriangle, CheckCircle } from 'lucide-react'; 
 import emailjs from '@emailjs/browser'; 
 
+// Toast Notification Component
+const Toast = ({ messages }) => (
+    <div className="fixed top-6 left-1/2 -translate-x-1/2 space-y-3 z-50 pointer-events-none">
+        {messages.map((msg) => (
+            <div
+                key={msg.id}
+                className={`px-8 py-4 rounded-full font-semibold text-white shadow-lg animate-in slide-in-from-top-4 fade-in pointer-events-auto ${
+                    msg.type === 'success'
+                        ? 'bg-green-500'
+                        : msg.type === 'error'
+                        ? 'bg-red-500'
+                        : msg.type === 'warning'
+                        ? 'bg-orange-500'
+                        : 'bg-blue-500'
+                }`}
+            >
+                <div className="flex items-center gap-3 whitespace-nowrap">
+                    {msg.type === 'success' && <CheckCircle size={18} />}
+                    {msg.type === 'error' && <AlertTriangle size={18} />}
+                    {msg.text}
+                </div>
+            </div>
+        ))}
+    </div>
+); 
+
 // Import Components
 import Navbar from './components/Navbar';
 import LandingPage, { PublicListings } from './pages/LandingPage';
-import LoginScreen from './pages/Login'; // Changed from Login to LoginScreen for clarity
-import SeekerDashboard, { MatchmakerSearch, JobDetailsPage } from './pages/SeekerDashboard';
+import LoginScreen from './pages/Login'; 
+import SeekerDashboard, { FindJobs, JobDetailsPage, DashboardOverview } from './pages/SeekerDashboard';
 import EmployerDashboard from './pages/EmployerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import ResumeBuilderMain from './pages/ResumeBuilder/ResumeBuilderMain.jsx';
 
 // Import Data
 import { 
-    ADMIN_ACCOUNT, 
-    INITIAL_JOBS, 
-    INITIAL_TRAININGS, 
-    INITIAL_JOB_FAIRS, 
-    INITIAL_APPLICATIONS, 
-    INITIAL_MESSAGES, 
-    INITIAL_NOTIFICATIONS, 
-    calculateMatchScore,
-    INITIAL_USERS 
+    ADMIN_ACCOUNT, INITIAL_JOBS, INITIAL_TRAININGS, INITIAL_JOB_FAIRS, 
+    INITIAL_APPLICATIONS, INITIAL_MESSAGES, INITIAL_NOTIFICATIONS, 
+    calculateMatchScore, INITIAL_USERS 
 } from './data/mockData';
 
-// Helper: Time Ago (Walang pagbabago)
+// ==========================================
+// 🛠️ HELPERS & SUB-COMPONENTS (Do Not Remove)
+// ==========================================
 const formatTimeAgo = (timestamp) => {
     if (!timestamp) return "";
     if (typeof timestamp !== 'number') return timestamp; 
@@ -40,171 +62,83 @@ const formatTimeAgo = (timestamp) => {
 
 const normalizeUserProfile = (rawUser) => {
     if (!rawUser) return rawUser;
-
     return {
         ...rawUser,
         companyName: rawUser.companyName || rawUser.company_name || null,
         qcId: rawUser.qcId || rawUser.qc_id || '',
-        bdayMonth: rawUser.bdayMonth || rawUser.bday_month || '',
-        bdayDay: rawUser.bdayDay || rawUser.bday_day || '',
-        bdayYear: rawUser.bdayYear || rawUser.bday_year || '',
-        gender: rawUser.gender || '',
-        resumePath: rawUser.resumePath || rawUser.resume_path || null,
-        isQcResident: typeof rawUser.isQcResident === 'boolean'
-            ? rawUser.isQcResident
-            : (typeof rawUser.is_qc_resident === 'boolean' ? rawUser.is_qc_resident : true),
+        isQcResident: typeof rawUser.isQcResident === 'boolean' ? rawUser.isQcResident : true,
     };
 };
 
-// MESSAGES PANEL (Walang pagbabago)
 const MessagesPanel = ({ messages, user, users, onBack, onSendMessage, onRead, initialChatId }) => {
     const [activeChatId, setActiveChatId] = useState(initialChatId || null);
     const [replyText, setReplyText] = useState("");
     const messagesEndRef = useRef(null);
 
-    useEffect(() => {
-        if (initialChatId) {
-            onRead(initialChatId);
-        }
-    }, [initialChatId, onRead]);
+    useEffect(() => { if (initialChatId) onRead(initialChatId); }, [initialChatId, onRead]);
 
     const contacts = Array.from(new Set(
-        messages
-            .filter(m => m.fromId === user.id || m.toId === user.id)
-            .map(m => m.fromId === user.id ? m.toId : m.fromId)
-    ))
-    .filter(contactId => contactId !== user.id) 
-    .map(contactId => {
+        messages.filter(m => m.fromId === user.id || m.toId === user.id)
+                .map(m => m.fromId === user.id ? m.toId : m.fromId)
+    )).filter(contactId => contactId !== user.id) 
+      .map(contactId => {
         const contactUser = users.find(u => u.id === contactId);
-        const hasUnread = messages.some(m => m.fromId === contactId && m.toId === user.id && !m.read);
-        
-        return { 
-            id: contactId, 
-            name: contactUser ? (contactUser.name || contactUser.companyName) : "Unknown User",
-            hasUnread 
-        };
+        return { id: contactId, name: contactUser ? (contactUser.name || contactUser.companyName) : "User", hasUnread: messages.some(m => m.fromId === contactId && m.toId === user.id && !m.read) };
     });
 
     const activeMessages = useMemo(() => {
-        return activeChatId 
-            ? messages.filter(m => (m.fromId === user.id && m.toId === activeChatId) || (m.fromId === activeChatId && m.toId === user.id)).sort((a,b) => a.id - b.id)
-            : [];
+        return activeChatId ? messages.filter(m => (m.fromId === user.id && m.toId === activeChatId) || (m.fromId === activeChatId && m.toId === user.id)).sort((a,b) => a.id - b.id) : [];
     }, [messages, activeChatId, user.id]);
 
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [activeMessages]);
-
-    const handleSend = (e) => {
-        e.preventDefault();
-        if (!replyText.trim() || !activeChatId) return;
-        onSendMessage(activeChatId, replyText);
-        setReplyText("");
-    };
-
-    const handleContactClick = (contactId) => {
-        setActiveChatId(contactId);
-        onRead(contactId);
-    };
+    useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeMessages]);
 
     return (
         <div className="max-w-6xl mx-auto p-4 h-[85vh] flex flex-col">
-            <button onClick={onBack} className="flex items-center gap-2 mb-4 hover:text-cyan-600 transition-colors w-fit">
-                <ChevronLeft/> Back to Dashboard
-            </button>
-
+            <button onClick={onBack} className="flex items-center gap-2 mb-4 hover:text-cyan-600 font-bold"><ChevronLeft/> Back</button>
             <div className="flex-1 bg-white rounded-xl shadow-lg border overflow-hidden flex">
                 <div className={`w-full md:w-1/3 border-r bg-gray-50 flex flex-col ${activeChatId ? 'hidden md:flex' : 'flex'}`}>
-                    <div className="p-4 border-b bg-white font-bold text-lg flex items-center gap-2">
-                        <MessageCircle size={20}/> Chats
-                    </div>
+                    <div className="p-4 border-b bg-white font-bold text-lg">Chats</div>
                     <div className="flex-1 overflow-y-auto">
-                        {contacts.length === 0 ? (
-                            <div className="p-4 text-gray-500 text-sm italic">No conversations yet.</div>
-                        ) : (
-                            contacts.map(c => (
-                                <div 
-                                    key={c.id} 
-                                    onClick={() => handleContactClick(c.id)}
-                                    className={`p-4 border-b cursor-pointer hover:bg-white transition-colors flex items-center gap-3 ${activeChatId === c.id ? 'bg-white border-l-4 border-l-cyan-500' : ''}`}
-                                >
-                                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 relative">
-                                        <User size={20}/>
-                                        {c.hasUnread && <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></div>}
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className={`text-sm text-gray-800 ${c.hasUnread ? 'font-bold' : 'font-normal'}`}>{c.name}</p>
-                                        <p className="text-xs text-gray-500">{c.hasUnread ? 'New message' : 'Click to view'}</p>
-                                    </div>
-                                </div>
-                            ))
-                        )}
+                        {contacts.map(c => (
+                            <div key={c.id} onClick={() => { setActiveChatId(c.id); onRead(c.id); }} className={`p-4 border-b cursor-pointer hover:bg-white ${activeChatId === c.id ? 'bg-white border-l-4 border-l-cyan-500' : ''}`}>
+                                <p className={`text-sm ${c.hasUnread ? 'font-bold' : ''}`}>{c.name}</p>
+                            </div>
+                        ))}
                     </div>
                 </div>
-
                 <div className={`w-full md:w-2/3 flex flex-col ${!activeChatId ? 'hidden md:flex' : 'flex'}`}>
                     {activeChatId ? (
                         <>
-                            <div className="p-4 border-b bg-white flex items-center gap-2 shadow-sm">
-                                <button onClick={()=>setActiveChatId(null)} className="md:hidden text-gray-500"><ChevronLeft/></button>
-                                <div className="font-bold text-lg">
-                                    {contacts.find(c => c.id === activeChatId)?.name || "Chat"}
-                                </div>
-                            </div>
-
+                            <div className="p-4 border-b bg-white font-bold">{contacts.find(c => c.id === activeChatId)?.name}</div>
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-                                {activeMessages.map(m => {
-                                    const isMe = m.fromId === user.id;
-                                    return (
-                                        <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                            <div className={`max-w-[70%] p-3 rounded-xl text-sm ${isMe ? 'bg-cyan-600 text-white rounded-br-none' : 'bg-white border text-gray-800 rounded-bl-none shadow-sm'}`}>
-                                                <p>{m.content}</p>
-                                                <span className={`text-[10px] block mt-1 text-right ${isMe ? 'text-cyan-100' : 'text-gray-400'}`}>{m.date}</span>
-                                            </div>
-                                        </div>
-                                    )
-                                })}
+                                {activeMessages.map(m => (
+                                    <div key={m.id} className={`flex ${m.fromId === user.id ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`max-w-[70%] p-3 rounded-xl text-sm ${m.fromId === user.id ? 'bg-cyan-600 text-white' : 'bg-white border'}`}>{m.content}</div>
+                                    </div>
+                                ))}
                                 <div ref={messagesEndRef} />
                             </div>
-
-                            <form onSubmit={handleSend} className="p-3 bg-white border-t flex gap-2">
-                                <input 
-                                    className="flex-1 border rounded-full px-4 py-2 text-sm outline-none focus:border-cyan-500 bg-gray-50"
-                                    placeholder="Type a message..."
-                                    value={replyText}
-                                    onChange={(e) => setReplyText(e.target.value)}
-                                />
-                                <button type="submit" className="bg-cyan-600 text-white p-2 rounded-full hover:bg-cyan-700 transition-colors">
-                                    <Send size={18}/>
-                                </button>
+                            <form onSubmit={(e) => { e.preventDefault(); if(replyText.trim()) { onSendMessage(activeChatId, replyText); setReplyText(""); } }} className="p-3 bg-white border-t flex gap-2">
+                                <input className="flex-1 border rounded-full px-4 py-2 outline-none" placeholder="Message..." value={replyText} onChange={(e) => setReplyText(e.target.value)} />
+                                <button type="submit" className="bg-cyan-600 text-white p-2 rounded-full"><Send size={18}/></button>
                             </form>
                         </>
-                    ) : (
-                        <div className="flex-1 flex items-center justify-center flex-col text-gray-400">
-                            <MessageCircle size={64} className="mb-4 opacity-20"/>
-                            <p>Select a conversation to start messaging</p>
-                        </div>
-                    )}
+                    ) : <div className="flex-1 flex items-center justify-center text-gray-400">Select a chat</div>}
                 </div>
             </div>
         </div>
     );
 };
 
-// Notifications Panel (Walang pagbabago)
 const NotificationsPanel = ({ notifications, user, onBack }) => (
     <div className="max-w-4xl mx-auto p-6">
-        <button onClick={onBack} className="flex items-center gap-2 mb-4"><ChevronLeft/> Back</button>
+        <button onClick={onBack} className="flex items-center gap-2 mb-4 font-bold"><ChevronLeft/> Back</button>
         <h1 className="text-2xl font-bold mb-4">Notifications</h1>
-        {notifications.filter(n=>n.toId===user.id).length === 0 ? (
-            <p className="text-gray-500">No notifications yet.</p>
-        ) : (
-            notifications.filter(n=>n.toId===user.id).map(n=>(
-                <div key={n.id} className={`p-4 border-b ${n.read ? 'bg-white text-gray-600' : 'bg-blue-50 font-bold'}`}>
-                    <p>{n.content} <span className="text-xs text-gray-500 block mt-1 font-normal">{formatTimeAgo(n.date)}</span></p>
-                </div>
-            ))
-        )}
+        {notifications.filter(n=>n.toId===user.id).map(n=>(
+            <div key={n.id} className={`p-4 border-b ${n.read ? 'bg-white' : 'bg-blue-50 font-bold'}`}>
+                <p>{n.content} <span className="text-xs text-gray-400 block mt-1">{formatTimeAgo(n.date)}</span></p>
+            </div>
+        ))}
     </div>
 );
 
@@ -212,41 +146,27 @@ const NotificationsPanel = ({ notifications, user, onBack }) => (
 // 🚀 MAIN APP COMPONENT
 // ==========================================
 const App = () => {
-    // 💡 FIX #1: Ginamit ang function form sa useState para mabasa ang localStorage sa unang load
     const [user, setUser] = useState(() => {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            try {
-                return normalizeUserProfile(JSON.parse(storedUser));
-            } catch (e) {
-                console.error("Failed to parse user from localStorage", e);
-                localStorage.removeItem('user'); 
-                return null;
-            }
-        }
-        return null;
+        const stored = localStorage.getItem('user');
+        return stored ? normalizeUserProfile(JSON.parse(stored)) : null;
     });
+    const [resumeFileData, setResumeFileData] = useState(null);
 
-    // 💡 FIX #2: Ginamit ang currentView initial state base sa stored user role
     const [currentView, setCurrentView] = useState(() => {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            const user = normalizeUserProfile(JSON.parse(storedUser));
-            if (user.role === 'Admin') return 'admin-dash';
-            if (user.role === 'Employer') return 'employer-dash';
-            if (user.role === 'Seeker') return 'matchmaker';
+        const stored = localStorage.getItem('user');
+        if (stored) {
+            const u = JSON.parse(stored);
+            if (u.role === 'Admin') return 'admin-dash';
+            if (u.role === 'Employer') return 'employer-dash';
+            return 'seeker-dash';
         }
-        return 'home'; // Default view
+        return 'home';
     });
-
 
     const [previousView, setPreviousView] = useState('home'); 
     const [loginError, setLoginError] = useState('');
-    
-    // TAB STATE
     const [seekerActiveTab, setSeekerActiveTab] = useState('overview'); 
 
-    // Data States (Walang pagbabago sa data structure, ginagamit pa rin ang localStorage)
     const [users, setUsers] = useState(() => JSON.parse(localStorage.getItem('cjl_users')) || INITIAL_USERS);
     const [jobs, setJobs] = useState(() => JSON.parse(localStorage.getItem('cjl_jobs')) || INITIAL_JOBS);
     const [applications, setApplications] = useState(() => JSON.parse(localStorage.getItem('cjl_applications')) || INITIAL_APPLICATIONS);
@@ -256,241 +176,213 @@ const App = () => {
     const [notifications, setNotifications] = useState(() => JSON.parse(localStorage.getItem('cjl_notifications')) || INITIAL_NOTIFICATIONS);
     const [selectedJob, setSelectedJob] = useState(null);
     const [targetChatId, setTargetChatId] = useState(null);
+    const [toastMessages, setToastMessages] = useState([]);
 
-    // Save data to localStorage whenever state changes (Walang pagbabago)
+    // helper used by seeker dashboard to view job metrics/details
+    const handleViewJobDetails = (job, fromView = '') => {
+        if (!job) return;
+        setSelectedJob(job);
+        setPreviousView(fromView);
+        setCurrentView('job-details');
+    };
+
+    // Toast notification helper
+    const showToast = (text, type = 'success') => {
+        const id = Date.now();
+        setToastMessages(prev => [...prev, { id, text, type }]);
+        setTimeout(() => {
+            setToastMessages(prev => prev.filter(msg => msg.id !== id));
+        }, 3000); // Auto-remove after 3 seconds
+    };
+
     useEffect(() => { localStorage.setItem('cjl_users', JSON.stringify(users)); }, [users]);
     useEffect(() => { localStorage.setItem('cjl_jobs', JSON.stringify(jobs)); }, [jobs]);
     useEffect(() => { localStorage.setItem('cjl_applications', JSON.stringify(applications)); }, [applications]);
     useEffect(() => { localStorage.setItem('cjl_notifications', JSON.stringify(notifications)); }, [notifications]);
     useEffect(() => { localStorage.setItem('cjl_messages', JSON.stringify(messages)); }, [messages]);
-    useEffect(() => { localStorage.setItem('cjl_jobfairs', JSON.stringify(jobFairs)); }, [jobFairs]); 
-    
-    // Auto-Login Handler (For Email Verification)
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const isAutoLogin = params.get('autologin');
-        const userDataStr = params.get('data');
-
-        if (isAutoLogin && userDataStr) {
-            try {
-                const userData = normalizeUserProfile(JSON.parse(decodeURIComponent(userDataStr)));
-                // 💡 NEW: I-store din sa localStorage pagkatapos ng auto-login
-                localStorage.setItem('user', JSON.stringify(userData)); 
-
-                setTimeout(() => {
-                    setUser(userData);
-                    if (userData.role === 'Admin') setCurrentView('admin-dash');
-                    else if (userData.role === 'Employer') setCurrentView('employer-dash');
-                    else setCurrentView('matchmaker');
-
-                    window.history.replaceState({}, document.title, "/");
-                    alert("Email Verified Successfully! You are now logged in.");
-                }, 0);
-            } catch (err) {
-                console.error("Auto-login failed:", err);
-            }
-        }
-    }, []);
+    useEffect(() => { localStorage.setItem('cjl_jobfairs', JSON.stringify(jobFairs)); }, [jobFairs]);
 
     const sendAutomatedEmail = (seekerEmail, seekerName, jobTitle, status, companyName, reason) => {
-        let subject = `Update on your application: ${status}`;
-        let message = `Hello ${seekerName},\n\nYour application for ${jobTitle} at ${companyName} has been updated to: ${status}.`;
-        if (status === 'Hired') {
-            subject = `Congratulations! You are Hired for ${jobTitle}`;
-            message = `Dear ${seekerName},\n\nCongratulations! We are pleased to inform you that you have been HIRED...`;
-        } else if (status === 'Interview') {
-            subject = `Interview Invitation: ${jobTitle}`;
-            message = `Dear ${seekerName},\n\nWe are impressed with your application! ${companyName} would like to invite you for an interview...`;
-        } else if (status === 'Rejected') {
-            message = `Dear ${seekerName},\n\nThank you for your interest. Unfortunately... Reason: ${reason || 'Not specified'}`;
-        }
-        const templateParams = { to_email: seekerEmail, to_name: seekerName, from_name: companyName, subject, message };
-        emailjs.send('service_n4c8dmq', 'template_scnzurg', templateParams, 'i5z0CxEmLkBbQVES-')
-            .then(() => console.log('SUCCESS! Email sent.'), (error) => console.log('FAILED to send email...', error));
+        const templateParams = { to_email: seekerEmail, to_name: seekerName, from_name: companyName, subject: `Update: ${status}`, message: `Your status for ${jobTitle} is now ${status}. ${reason || ''}` };
+        emailjs.send('service_n4c8dmq', 'template_scnzurg', templateParams, 'i5z0CxEmLkBbQVES-');
     };
 
     const handleNavigate = (view) => {
-        if (view === 'notifications') {
-            setNotifications(prev => prev.map(n => n.toId === user?.id ? { ...n, read: true } : n));
-        }
-        
-        if (view === 'seeker-dash') {
-            setSeekerActiveTab('overview');
-        }
-
-        setPreviousView(currentView); 
-        setCurrentView(view);
-    };
-
-    const handleViewJobDetails = (job, fromView) => {
-        setSelectedJob(job);
-        setPreviousView(fromView); 
-        setCurrentView('job-details');
-    };
-
-    const handleOpenChat = (partnerId) => {
-        setTargetChatId(partnerId);
-        setPreviousView(currentView);
-        setCurrentView('messages');
-    };
-
-    const handleSendMessage = (toId, content) => {
-        const newMsg = { id: Date.now(), fromId: user.id, toId: toId, senderName: user.name || user.companyName, content, date: new Date().toLocaleDateString(), read: false };
-        setMessages(prev => [newMsg, ...prev]);
-    };
-
-    const handleReadMessages = (chatPartnerId) => {
-        setMessages(prev => prev.map(m => (m.fromId === chatPartnerId && m.toId === user.id) ? { ...m, read: true } : m));
+        if (view === 'notifications') setNotifications(prev => prev.map(n => n.toId === user?.id ? { ...n, read: true } : n));
+        setPreviousView(currentView); setCurrentView(view);
     };
 
     const handleLogin = (type, data) => {
-        if (type === 'login_success' || type === 'auto_login') {
-            const normalizedUser = normalizeUserProfile(data);
-            setUser(normalizedUser); 
-            // 💡 NEW: I-save sa localStorage para manatiling naka-login pagka-refresh
-            localStorage.setItem('user', JSON.stringify(normalizedUser)); 
-            
-            if (normalizedUser.role === 'Admin') setCurrentView('admin-dash');
-            else if (normalizedUser.role === 'Employer') setCurrentView('employer-dash');
-            else setCurrentView('matchmaker'); 
-        } 
+        const normalized = normalizeUserProfile(data);
+        setUser(normalized); localStorage.setItem('user', JSON.stringify(normalized));
+        if (normalized.role === 'Admin') setCurrentView('admin-dash');
+        else if (normalized.role === 'Employer') setCurrentView('employer-dash');
+        else setCurrentView('seeker-dash');
     };
 
-    // 💡 FIX #3: Inayos ang Logout function para burahin ang localStorage
-    const handleLogout = () => { 
-        setUser(null); 
-        setCurrentView('home'); 
-        setLoginError(''); 
-        localStorage.removeItem('user'); 
-    };
+    const handleLogout = () => { setUser(null); localStorage.removeItem('user'); setCurrentView('home'); };
 
-    const handleUpdateProfile = (updated) => { 
-        const normalizedUser = normalizeUserProfile(updated);
-        setUser(normalizedUser); 
-        setUsers(users.map(u => u.id === normalizedUser.id ? normalizedUser : u)); 
-        // 💡 NEW: I-update rin sa localStorage ang profile
-        localStorage.setItem('user', JSON.stringify(normalizedUser));
-    };
-    
     const handleApply = (jobId) => {
-        if (!user) { alert("Log in first"); return setCurrentView('login'); }
-        if (applications.some(a => a.jobId === jobId && a.seekerId === user.id)) return alert("Applied already!");
-        const newApp = { id: Date.now(), jobId, seekerId: user.id, status: 'Pending', date: new Date().toLocaleDateString() };
-        setApplications([...applications, newApp]);
-        const job = jobs.find(j => j.id === jobId);
-        if (job) {
-            const notif = { id: Date.now() + 1, toId: job.employerId, content: `New Applicant: ${user.name} applied for ${job.title}.`, read: false, date: Date.now() };
-            setNotifications(prev => [notif, ...prev]);
-        }
-        alert("Application Sent!");
+    if (!user) return setCurrentView('login');
+    
+    // Check kung nag-apply na dati
+    if (applications.some(a => a.jobId === jobId && a.seekerId === user.id)) {
+        return showToast('You have already applied to this position!', 'warning');
+    }
+
+    const newApp = { 
+        id: Date.now(), 
+        jobId: jobId, 
+        seekerId: user.id, 
+        status: 'Applied', // 💡 ITO ANG KEY: Dapat 'Applied' ang spelling
+        date: new Date().toLocaleDateString() 
     };
 
-    const handleVerifyEmployer = (empId, isApproved) => {
-        if (isApproved) {
-            setUsers(users.map(u => u.id === empId ? { ...u, isVerified: true } : u));
-            alert("Employer Approved!");
-        } else {
-            setUsers(users.map(u => u.id === empId ? { ...u, uploadedDocs: false } : u));
-            alert("Employer Rejected.");
-        }
+    setApplications(prev => {
+        const updatedApps = [...prev, newApp];
+        // I-save sa localStorage para pag-refresh ay nandoon pa rin
+        localStorage.setItem('cjl_applications', JSON.stringify(updatedApps));
+        return updatedApps;
+    });
+
+    showToast('Application submitted successfully! ✓', 'success');
+    setCurrentView('seeker-dash'); // Auto-navigate sa dashboard
     };
 
     const handleUpdateAppStatus = (appId, newStatus, reason) => {
-        setApplications(applications.map(a => a.id === appId ? { ...a, status: newStatus, rejectionReason: reason } : a));
+        setApplications(prev => prev.map(a => a.id === appId ? { ...a, status: newStatus, rejectionReason: reason } : a));
         const app = applications.find(a => a.id === appId);
         if (app) {
-            const job = jobs.find(j => j.id === app.jobId);
-            let content = `Update: Your application for ${job.title} is now ${newStatus}.`;
-            if (newStatus === 'Rejected' && reason) content += ` Reason: "${reason}"`;
-            setNotifications(prev => [{ id: Date.now(), toId: app.seekerId, content, read: false, date: Date.now() }, ...prev]);
             const seeker = users.find(u => u.id === app.seekerId);
-            if (seeker && job && ['Interview', 'Hired', 'Rejected'].includes(newStatus)) {
-                sendAutomatedEmail(seeker.email, seeker.name, job.title, newStatus, job.company, reason);
-            }
+            const job = jobs.find(j => j.id === app.jobId);
+            if (seeker && job) sendAutomatedEmail(seeker.email, seeker.name, job.title, newStatus, job.company, reason);
         }
     };
 
-    const handleAddJobFair = (newFairData) => {
-        let imageUrl = 'https://via.placeholder.com/400x200?text=Default+Image'; 
-        if (newFairData.imageFile) imageUrl = URL.createObjectURL(newFairData.imageFile);
-        const fairWithId = { ...newFairData, id: Date.now(), participants: [], image: imageUrl };
-        delete fairWithId.imageFile;
-        setJobFairs([fairWithId, ...jobFairs]);
+    const handleCancelApplication = (appId, reason = '') => {
+        setApplications(prev => prev.map(a => a.id === appId ? { ...a, status: 'Cancelled', cancellationReason: reason } : a));
+        showToast('Application withdrawn successfully', 'success');
+    };
+
+    const handleRegisterTraining = (trainingId) => {
+        if (!user) return setCurrentView('login');
+        
+        // Check if already registered
+        const training = trainings.find(t => t.id === trainingId);
+        if (!training) {
+            showToast('Training not found', 'error');
+            return;
+        }
+        
+        if (training.registeredUsers?.includes(user.id)) {
+            showToast('You are already registered for this training!', 'warning');
+            return;
+        }
+        
+        // Add user to registeredUsers and decrement slots
+        setTrainings(prev => prev.map(t => 
+            t.id === trainingId 
+                ? { 
+                    ...t, 
+                    slots: (t.slots || 0) - 1,
+                    registeredUsers: [...(t.registeredUsers || []), user.id]
+                  }
+                : t
+        ));
+        
+        showToast(`Registered for ${training.title}! ✓`, 'success');
+        setCurrentView('seeker-dash');
+    };
+
+    const handleRegisterJobFair = (jobFairId) => {
+        if (!user) return setCurrentView('login');
+        
+        // Check if already registered
+        const jobFair = jobFairs.find(f => f.id === jobFairId);
+        if (!jobFair) {
+            showToast('Job Fair not found', 'error');
+            return;
+        }
+        
+        if (jobFair.participants?.includes(user.id)) {
+            showToast('You are already registered for this job fair!', 'warning');
+            return;
+        }
+        
+        // Add user to participants
+        setJobFairs(prev => prev.map(f => 
+            f.id === jobFairId 
+                ? { 
+                    ...f, 
+                    participants: [...(f.participants || []), user.id]
+                  }
+                : f
+        ));
+        
+        showToast(`Registered for ${jobFair.title}! ✓`, 'success');
+        setCurrentView('seeker-dash');
+    };
+
+    const handleSendMessage = (toId, content) => {
+        const newMsg = { id: Date.now(), fromId: user.id, toId, content, date: new Date().toLocaleDateString(), read: false };
+        setMessages(prev => [newMsg, ...prev]);
     };
 
     const renderContent = () => {
-        // Tinitignan kung hindi naka-login O kung nag-navigate sa 'login'
-        if (!user || currentView === 'login') return <LoginScreen onLogin={handleLogin} loginError={loginError} setLoginError={setLoginError} />;
-        
+        // 1. PUBLIC VIEWS (Routing Fix: Included explicit checks)
         if (currentView === 'home') return <LandingPage onNavigate={handleNavigate} />;
-        if (currentView === 'resume-builder') return <ResumeBuilderMain user={user} onBack={() => setCurrentView('seeker-dash')} />;
+        if (currentView === 'trainings' || currentView === 'public-trainings') {
+            return <PublicListings type="trainings" data={trainings} user={user} onRegister={handleRegisterTraining} />;
+        }
+        if (currentView === 'jobfairs' || currentView === 'public-jobfairs') {
+            return <PublicListings type="jobfairs" data={jobFairs} user={user} onRegister={handleRegisterJobFair} />;
+        }
 
-        if (currentView === 'public-trainings') return <PublicListings type="trainings" data={trainings} user={user} onRegister={(id) => setTrainings(trainings.map(t => t.id===id ? {...t, slots:t.slots-1, registeredUsers:[...t.registeredUsers, user.id]} : t))} />;
-        if (currentView === 'public-jobfairs') return <PublicListings type="jobfairs" data={jobFairs} user={user} onRegister={(id) => setJobFairs(jobFairs.map(f => f.id===id ? {...f, participants:[...f.participants, user.id]} : f))} />;
+        // 2. AUTH WALL
+        if (!user || currentView === 'login') return <LoginScreen onLogin={handleLogin} loginError={loginError} setLoginError={setLoginError} />;
 
+        // 3. PROTECTED VIEWS
+       // Halimbawa sa App.jsx:
         if (currentView === 'seeker-dash') return (
             <SeekerDashboard 
                 profile={user} 
-                applications={applications} 
-                jobs={jobs} 
-                trainings={trainings} 
-                jobFairs={jobFairs} 
-                initialTab={seekerActiveTab} 
-                onUpdateProfile={handleUpdateProfile} 
-                onUpdateTrainings={(id, uid, act) => setTrainings(trainings.map(t => t.id===id ? (act==='join' ? {...t, slots:t.slots-1, registeredUsers:[...t.registeredUsers, user.id]} : {...t, slots:t.slots+1, registeredUsers:t.registeredUsers.filter(x=>x!==uid)}) : t))} 
-                onUpdateFairs={()=>{}} 
-                onReviewCompany={()=>{}} 
+                applications={applications || []} // Gumamit ng || [] para hindi mag-blank kung null
+                jobs={jobs || []} 
+                trainings={trainings || []}
+                jobFairs={jobFairs || []}
+                onNavigate={setCurrentView}
                 onViewJob={(j) => handleViewJobDetails(j, 'seeker-dash')}
-                onCancelApplication={() => {}} 
-                onNavigate={setCurrentView} 
+                onCancelApplication={handleCancelApplication}
             />
         );
-        
-        if (currentView === 'employer-dash') return <EmployerDashboard 
-            profile={user} 
-            jobs={jobs} 
-            applications={applications} 
-            seekers={users.filter(u=>u.role==='Seeker')} 
-            onPostJob={j => {
-                const existing = jobs.findIndex(x => x.id === j.id);
-                if (existing !== -1) { const newJobs = [...jobs]; newJobs[existing] = j; setJobs(newJobs); } 
-                else { setJobs([j,...jobs]); }
-            }} 
-            onUpdateJob={updated => setJobs(jobs.map(j => j.id === updated.id ? updated : j))} 
-            onUpdateProfile={handleUpdateProfile} 
-            onUploadDocs={() => { handleUpdateProfile({...user, uploadedDocs:true}); alert("Request Sent"); }} 
-            onOpenChat={handleOpenChat}
-            onUpdateStatus={handleUpdateAppStatus} 
-        />;
-        
-        if (currentView === 'admin-dash') return <AdminDashboard employers={users.filter(u => u.role === 'Employer')} onVerifyEmployer={handleVerifyEmployer} jobFairs={jobFairs} onAddJobFair={handleAddJobFair} />;
-        
-        if (currentView === 'matchmaker') return <MatchmakerSearch jobs={jobs} userProfile={user} onApply={handleApply} onJobClick={(j) => handleViewJobDetails(j, 'matchmaker')}/>;
-        
+
+        if (currentView === 'employer-dash') return <EmployerDashboard profile={user} jobs={jobs} applications={applications} seekers={users.filter(u=>u.role==='Seeker')} onPostJob={(j) => setJobs([j,...jobs])} onUpdateStatus={handleUpdateAppStatus} onUpdateProfile={(u)=>setUser(u)} onOpenChat={(id)=>{setTargetChatId(id); setCurrentView('messages');}} />;
+        if (currentView === 'admin-dash') return <AdminDashboard employers={users.filter(u => u.role === 'Employer')} onVerifyEmployer={()=>{}} jobFairs={jobFairs} onAddJobFair={()=>{}} />;
+        if (currentView === 'matchmaker') return <FindJobs jobs={jobs} onApply={handleApply} applications={applications} userId={user.id} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} />;
         if (currentView === 'job-details') {
-            if (!selectedJob) return <div>Loading...</div>;
-            return <JobDetailsPage 
-                job={selectedJob} 
-                matchData={calculateMatchScore(selectedJob.requiredSkills, user?.skills||[])} 
-                onBack={() => setCurrentView(previousView)} 
-                onApply={handleApply} 
-                hasApplied={applications.some(a => a.jobId === selectedJob.id && a.seekerId === user?.id)} 
-            />;
-        }
-        if (currentView === 'messages') return <MessagesPanel messages={messages} user={user} users={users} onBack={() => setCurrentView('home')} onSendMessage={handleSendMessage} onRead={handleReadMessages} initialChatId={targetChatId} />;
-        if (currentView === 'notifications') return <NotificationsPanel notifications={notifications} user={user} onBack={() => setCurrentView(previousView || 'home')} />;
+            const matchInfo = calculateMatchScore(selectedJob?.requiredSkills || [], user?.skills || []);
+            return (
+                <JobDetailsPage 
+                    job={selectedJob} 
+                    matchData={matchInfo} // Siguraduhing naipapasa ito
+                    onBack={() => setCurrentView(previousView)} 
+                />
+            );
+        }       
+        if (currentView === 'messages') return <MessagesPanel messages={messages} user={user} users={users} onBack={() => setCurrentView(previousView)} onSendMessage={handleSendMessage} onRead={(id) => setMessages(prev => prev.map(m => (m.fromId === id && m.toId === user.id) ? { ...m, read: true } : m))} initialChatId={targetChatId} />;
+        if (currentView === 'notifications') return <NotificationsPanel notifications={notifications} user={user} onBack={() => setCurrentView(previousView)} />;
+        if (currentView === 'resume-builder') return <ResumeBuilderMain user={user} onBack={() => setCurrentView('seeker-dash')} onSaveResume={(resumeData) => { const updatedUser = { ...user, resumeFile: resumeData.resumeFile, resumeType: resumeData.resumeType }; setUser(updatedUser); setResumeFileData(resumeData.resumeData); localStorage.setItem('user', JSON.stringify(updatedUser)); showToast('Resume saved successfully! Employers can now assess it.', 'success'); }} />;
 
         return <LandingPage onNavigate={handleNavigate} />;
     };
 
-    const unreadNotifs = notifications.filter(n => n.toId === user?.id && !n.read).length;
-
     return (
         <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
-            <Navbar user={user} onLogout={handleLogout} onNavigate={handleNavigate} messages={messages} notifications={notifications} unreadNotifs={unreadNotifs} currentView={currentView} />
+            <Navbar user={user} onLogout={handleLogout} onNavigate={handleNavigate} unreadNotifs={notifications.filter(n => n.toId === user?.id && !n.read).length} currentView={currentView} />
             {renderContent()}
+            <Toast messages={toastMessages} />
         </div>
     );
 };
 
-export default App; 
+export default App;

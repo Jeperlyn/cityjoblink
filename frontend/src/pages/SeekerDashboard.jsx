@@ -1,589 +1,590 @@
 // src/pages/SeekerDashboard.jsx
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Edit3, Trash2, X, FileText, UploadCloud, Plus, ChevronLeft, Search, Filter, Star, CheckCircle, XCircle, Calendar, Clock, MapPin, Ticket, Printer, User, Smile, Loader2, Download, AlertCircle } from 'lucide-react';
-import { calculateMatchScore } from '../data/mockData';
+import React, { useState, useEffect, useRef } from 'react'; 
+import { 
+  Trash2, FileText, ChevronDown, ChevronUp, ChevronLeft, Search, 
+  Briefcase, Info, User, Users, Lock, CheckCircle, XCircle, 
+  Star, Target, Zap, TrendingUp, Upload, FilePlus, 
+  ExternalLink, Clock, MapPin, FileCheck, X, AlertCircle
+} from 'lucide-react';
 
-// --- 1. MATCHMAKER SEARCH (Cards) ---
-export const MatchmakerSearch = ({ jobs, userProfile, onJobClick, onApply }) => {
-  const [keyword, setKeyword] = useState('');
-  
-  const processedJobs = useMemo(() => {
-    const safeSkills = userProfile?.skills || [];
-    return jobs.map(job => ({ ...job, matchData: calculateMatchScore(job.requiredSkills, safeSkills) }))
-      .filter(job => {
-          const searchTerm = keyword.toLowerCase();
-          const title = job.title ? job.title.toLowerCase() : "";
-          const company = job.company ? job.company.toLowerCase() : "";
-          return title.includes(searchTerm) || company.includes(searchTerm);
-      })
-      .sort((a, b) => b.matchData.score - a.matchData.score);
-  }, [jobs, keyword, userProfile]);
+// =====================================================
+// 1. COMPONENT: APPLICATION PROGRESS STEPPER
+// =====================================================
+const ApplicationProcessSteps = ({ status }) => {
+  const steps = [
+    { id: 'Applied', label: 'Applied', icon: <FileText size={14}/> },
+    { id: 'Screening', label: 'Screening', icon: <Target size={14}/> },
+    { id: 'Interviewed', label: 'Interview', icon: <Zap size={14}/> },
+    { id: 'Decision', label: 'Decision', icon: <TrendingUp size={14}/> }
+  ];
 
-  const recommendedJobs = processedJobs.filter(j => j.matchData.score >= 70);
-
-  return (
-    <div className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-4 gap-8">
-      <aside className="hidden lg:block lg:col-span-1 bg-white rounded-xl p-6 shadow-sm border h-fit sticky top-24">
-        <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Filter size={18}/> Smart Filters</h3>
-        <div className="text-sm text-gray-600 mb-4">Jobs matching your skills: <br/><span className="font-bold text-cyan-600">{userProfile?.skills?.length > 0 ? userProfile.skills.join(", ") : "No skills listed"}</span></div>
-        {userProfile?.skills?.length === 0 && <div className="text-xs text-orange-500 bg-orange-50 p-2 rounded">Tip: Upload a resume to extract skills!</div>}
-      </aside>
-      <main className="lg:col-span-3 space-y-6">
-        <div className="bg-white p-4 rounded-xl shadow-sm border flex gap-2"><Search className="text-gray-400" /><input className="flex-1 outline-none" placeholder="Search by job title..." value={keyword} onChange={e => setKeyword(e.target.value)} /></div>
-        
-        {recommendedJobs.length > 0 && (
-          <section>
-            <div className="flex items-center gap-2 mb-4"><Star className="text-cyan-500 fill-cyan-500" size={20} /><h2 className="text-xl font-bold">Jobs for You (Smart Match)</h2></div>
-            <div className="grid md:grid-cols-2 gap-4">
-                {recommendedJobs.map(job => (
-                    <div key={job.id} className="bg-white p-5 rounded-xl shadow-sm border border-cyan-100 hover:border-cyan-400 transition-all relative overflow-hidden flex flex-col justify-between">
-                        <div className="absolute top-0 right-0 bg-cyan-500 text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg">{job.matchData.score}% MATCH</div>
-                        <div>
-                            <h3 className="font-bold text-lg">{job.title}</h3>
-                            <p className="text-sm text-gray-500 mb-2">{job.company || "Company Confidential"}</p>
-                            <div className="mb-4">
-                                <p className="text-xs text-gray-400 mb-1">Matched Skills:</p>
-                                <div className="flex flex-wrap gap-1">
-                                    {job.matchData.matches.slice(0, 3).map(skill => (
-                                        <span key={skill} className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-100">{skill}</span>
-                                    ))}
-                                    {job.matchData.matches.length > 3 && <span className="text-[10px] text-gray-400">+{job.matchData.matches.length - 3} more</span>}
-                                </div>
-                            </div>
-                        </div>
-                        <button onClick={() => onJobClick(job)} className="w-full bg-black text-white py-2 rounded-lg text-sm font-bold hover:bg-gray-800">View Details</button>
-                    </div>
-                ))}
-            </div>
-          </section>
-        )}
-        
-        <h2 className="text-xl font-bold pt-4 border-t">All Opportunities</h2>
-        {processedJobs.map(job => (
-            <div key={job.id} className="bg-white p-5 rounded-xl shadow-sm border flex justify-between items-center">
-                <div><h3 className="font-bold">{job.title}</h3><p className="text-sm text-gray-500">{job.company || "Company Confidential"}</p></div>
-                <button onClick={() => onJobClick(job)} className="border px-4 py-2 rounded hover:bg-gray-50 text-sm font-bold">View Details</button>
-            </div>
-        ))}
-      </main>
-    </div>
-  );
-};
-
-// --- 2. JOB DETAILS PAGE ---
-export const JobDetailsPage = ({ job, matchData, onBack, onApply, application, onCancel }) => {
-  if (!job) return null;
-
-  const cleanJobSkills = job.requiredSkills.filter(s => s && s.trim() !== "");
-  const missingSkills = cleanJobSkills.filter(skill => !matchData.matches.includes(skill));
-  const hasRequirements = cleanJobSkills.length > 0;
-  
-  // ✅ FIXED: Allow cancel for 'Applied' and 'Interviewed'
-  const canCancel = application && ['Applied', 'Interviewed'].includes(application.status);
-
-  return (
-    <div className="max-w-5xl mx-auto p-6 min-h-screen">
-      <button onClick={onBack} className="flex items-center gap-2 text-gray-500 mb-4 hover:text-black"><ChevronLeft size={20}/> Back</button>
-      
-      <div className="bg-white p-8 rounded-xl border shadow-sm">
-         <div className="flex justify-between items-start">
-             <div>
-                <h1 className="text-3xl font-bold text-gray-900">{job.title}</h1>
-                <p className="text-lg text-gray-600 mb-4">{job.company || "Company Confidential"}</p>
-             </div>
-             <div className={`text-center p-3 rounded-lg border ${matchData.score >= 70 ? 'bg-green-50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
-                 <span className="block text-2xl font-bold">{matchData.score}%</span>
-                 <span className="text-[10px] uppercase font-bold tracking-wider">Match Score</span>
-             </div>
-         </div>
-
-         <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mb-8">
-             <h3 className="font-bold text-gray-800 mb-3">Skill Matching Analysis</h3>
-             <div className="grid md:grid-cols-2 gap-6">
-                 <div>
-                     <p className="text-xs font-bold text-green-600 uppercase mb-2 flex items-center gap-1"><CheckCircle size={14}/> You have:</p>
-                     <div className="flex flex-wrap gap-2">
-                         {matchData.matches.length > 0 ? matchData.matches.map(s => (
-                             <span key={s} className="bg-green-100 text-green-800 text-sm px-3 py-1 rounded-full font-medium">{s}</span>
-                         )) : <span className="text-sm text-gray-400 italic">No matching skills found.</span>}
-                     </div>
-                 </div>
-                 <div>
-                     <p className="text-xs font-bold text-red-500 uppercase mb-2 flex items-center gap-1"><XCircle size={14}/> Missing:</p>
-                     <div className="flex flex-wrap gap-2">
-                         {!hasRequirements ? (
-                             <span className="text-sm text-gray-500 italic">No specific skills required.</span>
-                         ) : missingSkills.length > 0 ? (
-                             missingSkills.map(s => (
-                                 <span key={s} className="bg-red-50 text-red-600 text-sm px-3 py-1 rounded-full font-medium border border-red-100">{s}</span>
-                             ))
-                         ) : (
-                             <span className="text-sm text-green-600 italic font-medium">None! You're a perfect match.</span>
-                         )}
-                     </div>
-                 </div>
-             </div>
-         </div>
-
-         {application ? (
-             <div className={`mb-8 p-6 rounded-xl border-l-8 shadow-sm ${
-                 application.status === 'Not Selected' ? 'bg-red-50 border-red-500' :
-                 application.status === 'Cancelled' ? 'bg-gray-50 border-gray-400' :
-                 'bg-green-50 border-green-500'
-             }`}>
-                 <div className="flex items-start gap-4">
-                     <div className={`p-3 rounded-full ${
-                         application.status === 'Not Selected' ? 'bg-red-200 text-red-700' :
-                         application.status === 'Cancelled' ? 'bg-gray-200 text-gray-600' :
-                         'bg-green-200 text-green-700'
-                     }`}>
-                         {application.status === 'Not Selected' ? <XCircle size={32}/> : 
-                          application.status === 'Cancelled' ? <XCircle size={32}/> : 
-                          <CheckCircle size={32}/>}
-                     </div>
-                     <div className="flex-1">
-                         <h3 className={`text-xl font-bold ${
-                             application.status === 'Not Selected' ? 'text-red-800' :
-                             application.status === 'Cancelled' ? 'text-gray-800' :
-                             'text-green-800'
-                         }`}>
-                             {/* ✅ UPDATED: Status Labels */}
-                             {application.status === 'Applied' ? 'Application Submitted!' :
-                              application.status === 'Interviewed' ? 'For Interview' :
-                              application.status === 'Hired' ? 'You are Hired! 🎉' :
-                              application.status === 'Not Selected' ? 'Not Selected' :
-                              'Application Withdrawn'}
-                         </h3>
-                         <p className="text-sm text-gray-500 flex items-center gap-2 mt-1">Status Date: {application.date}</p>
-
-                         {application.status === 'Not Selected' && application.rejectionReason && (
-                             <div className="mt-3 bg-white border border-red-100 p-3 rounded text-sm text-red-700">
-                                 <span className="font-bold">Employer's Note:</span> {application.rejectionReason}
-                             </div>
-                         )}
-                         {application.status === 'Cancelled' && application.cancellationReason && (
-                             <div className="mt-3 bg-white border border-gray-200 p-3 rounded text-sm text-gray-600">
-                                 <span className="font-bold">Your Reason:</span> {application.cancellationReason}
-                             </div>
-                         )}
-                     </div>
-                 </div>
-
-                 {canCancel && (
-                     <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">
-                         <button 
-                            onClick={() => onCancel(application.id)}
-                            className="text-sm font-bold text-gray-500 hover:text-red-600 transition-colors flex items-center gap-1"
-                         >
-                            <Trash2 size={14}/> Withdraw Application
-                         </button>
-                     </div>
-                 )}
-             </div>
-         ) : (
-             <div className="mb-8 bg-blue-50 p-6 rounded-xl border border-blue-100 flex flex-col md:flex-row items-center justify-between gap-4">
-                 <div>
-                     <h3 className="font-bold text-blue-900 text-lg">Interested in this role?</h3>
-                     <p className="text-blue-700 text-sm">Make sure your profile is updated before applying.</p>
-                 </div>
-                 <button onClick={()=>onApply(job.id)} className="bg-black text-white px-8 py-3 rounded-lg font-bold text-lg hover:bg-gray-800 shadow-lg transition-all transform hover:scale-105">
-                     Apply Now
-                 </button>
-             </div>
-         )}
-
-         <h3 className="font-bold text-lg mb-3 mt-8">Job Description</h3>
-         <p className="text-gray-700 mb-8 leading-relaxed whitespace-pre-line">{job.description}</p>
-         
-         <h3 className="font-bold text-lg mb-3">Job Overview</h3>
-         <div className="grid md:grid-cols-2 gap-4 text-sm bg-gray-50 p-5 rounded-xl border">
-             <div className="flex justify-between border-b pb-2 border-gray-200">
-                 <span className="text-gray-500">Salary Offer</span>
-                 <span className="font-bold text-gray-900">{job.salary}</span>
-             </div>
-             <div className="flex justify-between border-b pb-2 border-gray-200">
-                 <span className="text-gray-500">Work Location</span>
-                 <span className="font-bold text-gray-900">{job.location}</span>
-             </div>
-             <div className="flex justify-between border-b pb-2 border-gray-200 md:border-b-0">
-                 <span className="text-gray-500">Employment Type</span>
-                 <span className="font-bold text-gray-900">{job.type}</span>
-             </div>
-             <div className="flex justify-between">
-                 <span className="text-gray-500">Date Posted</span>
-                 <span className="font-bold text-gray-900">{job.posted}</span>
-             </div>
-         </div>
-      </div>
-    </div>
-  );
-};
-
-// --- 3. SEEKER DASHBOARD (Main) ---
-const SeekerDashboard = ({ profile, applications, jobs, trainings, jobFairs, initialTab, onUpdateProfile, onUpdateTrainings, onReviewCompany, onViewJob, onCancelApplication, onNavigate }) => {
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-  const [activeTab, setActiveTab] = useState(initialTab || 'overview');
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState(null);
-
-  const myTrainings = (trainings || []).filter(t => t.registeredUsers?.includes(profile?.id));
-  const myFairs = (jobFairs || []).filter(f => f.participants?.includes(profile?.id));
-
-  useEffect(() => {
-    if (initialTab) {
-        setActiveTab(initialTab);
-    }
-  }, [initialTab]);
-
-  const [modalType, setModalType] = useState(null);
-  const [tempInput, setTempInput] = useState({});
-  const [selectedTicket, setSelectedTicket] = useState(null);
-
-  const fileInputRef = useRef(null);
-  const [currentFile, setCurrentFile] = useState(null);
-
-const uploadResume = async (email, file) => {
-    const data = new FormData();
-    data.append('email', email);
-    data.append('resumeFile', file); 
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/upload/resume`, {
-            method: 'POST',
-            body: data, 
-        });
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            return result.user; 
-        } else {
-            setUploadError(result.message);
-            return null;
-        }
-    } catch (error) {
-        setUploadError("Network error: Cannot reach the server. Check if server is running."); 
-        return null;
-    }
-};
-
-const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 10 * 1024 * 1024) { 
-        alert("File is too large! Max limit is 10MB.");
-        return;
-    }
+  const getStepStatus = (stepId, currentStatus) => {
+    const statusOrder = ['Applied', 'Screening', 'Interviewed', 'Hired', 'Not Selected', 'Cancelled'];
+    const currentIndex = statusOrder.indexOf(currentStatus);
+    if (currentStatus === 'Cancelled') return 'bg-gray-100 text-gray-300 border-gray-200';
     
-    setCurrentFile(file);
-    setIsUploading(true);
-    setUploadError(null);
-    
-    if (!profile.email) {
-        setUploadError("User email is missing from profile. Cannot upload.");
-        setIsUploading(false);
-        return;
+    if (stepId === 'Decision') {
+      if (currentStatus === 'Hired') return 'bg-green-500 text-white border-green-500';
+      if (currentStatus === 'Not Selected') return 'bg-red-500 text-white border-red-500';
+      return 'bg-gray-50 text-gray-300 border-gray-100';
     }
 
-    const updatedUserData = await uploadResume(profile.email, file);
-    setIsUploading(false);
-
-    if (updatedUserData) {
-        onUpdateProfile({ 
-            ...profile, 
-            ...updatedUserData,
-            name: profile.name,
-            resumeFile: file.name,
-        });
-        setShowUploadModal(true);
-        setCurrentFile(null);
-    }
-};
-
-const triggerFileInput = () => {
-    fileInputRef.current.click();
-};
-
-const handleDownloadResume = () => {
-    const filePath = profile.resumePath; 
-    if (filePath) {
-        const fileNamePart = profile.name || "Resume_File"; 
-        const fileExtension = filePath.split('/').pop() || "resume.pdf";
-        const publicUrl = `${API_BASE_URL}/${filePath}`;
-        const link = document.createElement('a');
-        link.href = publicUrl;
-        link.download = `${fileNamePart}_Resume_${fileExtension}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } else {
-        alert("Resume file path not found.");
-    }
-};
-
-
-  const handleAddEntry = () => {
-    if (modalType === 'review') onReviewCompany(tempInput.appId, tempInput.rating, tempInput.comment);
-    setModalType(null); setTempInput({});
+    if (stepId === currentStatus) return 'bg-cyan-600 text-white border-cyan-600 shadow-lg scale-110 z-10';
+    if (statusOrder.indexOf(stepId) < currentIndex) return 'bg-cyan-600 text-white border-cyan-600';
+    return 'bg-gray-50 text-gray-300 border-gray-100';
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        accept=".pdf,.doc,.docx" 
-        onChange={handleFileUpload} 
-      />
-
-      <div className="flex justify-between items-end mb-6">
-        <div>
-            <h1 className="text-3xl font-bold">My Dashboard</h1>
-            <p className="text-gray-500">Welcome back, {profile.name || profile.email || 'Job Seeker'}</p>
-        </div>
-      </div>
-
-      <div className="flex gap-4 mb-6 border-b overflow-x-auto">
-        {['overview', 'profile & resume', 'trainings', 'jobfairs'].map(tab => (
-            <button 
-                key={tab} 
-                onClick={() => setActiveTab(tab)} 
-                className={`pb-2 px-4 font-medium capitalize whitespace-nowrap ${activeTab === tab ? 'border-b-2 border-cyan-500 text-cyan-600' : 'text-gray-500'}`}
-            >
-                {tab === 'jobfairs' ? 'My Job Fairs' : tab === 'trainings' ? 'My Trainings' : tab}
-            </button>
+    <div className="w-full py-10">
+      <div className="flex items-center justify-between relative px-2">
+        <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-100 -translate-y-1/2 z-0 rounded-full"></div>
+        {steps.map((step) => (
+          <div key={step.id} className="relative z-10 flex flex-col items-center gap-3 bg-white px-2">
+            <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center transition-all duration-500 ${getStepStatus(step.id, status)}`}>
+              {step.icon}
+            </div>
+            <span className={`text-[10px] font-black uppercase tracking-widest ${step.id === status ? 'text-cyan-700' : 'text-gray-400'}`}>
+              {step.label}
+            </span>
+          </div>
         ))}
       </div>
-      
-      {activeTab === 'overview' && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border">
-            <h3 className="font-bold text-lg mb-4">Applications</h3>
-            {applications.length === 0 ? <p className="text-gray-500">No applications yet.</p> : applications.map(app => { 
-                const job = jobs.find(j => j.id === app.jobId); 
-                // ✅ FIXED: Allow cancel for specific statuses
-                const canCancel = ['Applied', 'Interviewed'].includes(app.status);
+    </div>
+  );
+};
 
-                return (
-                    <div key={app.id} className="flex justify-between items-start border-b pb-4 mb-4 last:border-0">
-                        <div className="flex-1">
-                            <h4 className="font-bold text-lg">{job?.title}</h4>
-                            <p className="text-sm text-gray-500 mb-1">{job?.company || "Company Confidential"}</p>
-                            <button onClick={() => onViewJob(job)} className="text-xs text-blue-600 underline font-bold">View Job Details</button>
-                            
-                            {app.status === 'Not Selected' && app.rejectionReason && (
-                                <div className="mt-2 bg-red-50 border border-red-100 p-2 rounded text-xs text-red-700 max-w-md">
-                                    <span className="font-bold">Reason:</span> {app.rejectionReason}
+// =====================================================
+// 2. COMPONENT: MATCH DETAILS PAGE (Skill Analysis)
+// =====================================================
+export const JobDetailsPage = ({ job, matchData, onBack }) => {
+  if (!job) return <div className="p-20 text-center font-black">Job data not found.</div>;
+  
+  // Defensive check for matchData
+  const matches = matchData?.matches || [];
+  const score = matchData?.score || 0;
+  const missingSkills = (job.requiredSkills || []).filter(skill => !matches.includes(skill));
+
+  return (
+    <div className="max-w-4xl mx-auto p-6 animate-in slide-in-from-bottom-4 duration-500">
+      <button onClick={onBack} className="flex items-center gap-2 text-gray-400 hover:text-black transition-all font-black text-xs uppercase tracking-widest mb-8">
+        <ChevronLeft size={20}/> Back to Dashboard
+      </button>
+
+      <div className="bg-white rounded-[3.5rem] border border-gray-100 shadow-sm overflow-hidden">
+        <div className="p-12 border-b border-gray-50 bg-gradient-to-br from-white to-gray-50/50 flex justify-between items-center">
+          <div>
+            <h1 className="text-4xl font-black text-gray-900 tracking-tighter mb-2">{job.title}</h1>
+            <p className="text-xl font-bold text-cyan-600 uppercase tracking-widest">{job.company}</p>
+          </div>
+          <div className="text-center bg-white p-6 rounded-[2.5rem] shadow-xl border border-gray-50">
+             <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Match Rate</p>
+             <p className={`text-4xl font-black ${score >= 70 ? 'text-green-500' : 'text-orange-500'}`}>{score}%</p>
+          </div>
+        </div>
+
+        <div className="p-12 grid md:grid-cols-2 gap-8">
+          <div className="bg-green-50/50 p-8 rounded-[2.5rem] border border-green-100">
+            <h4 className="flex items-center gap-2 text-[10px] font-black text-green-600 uppercase mb-4"><CheckCircle size={14}/> Matched Skills</h4>
+            <div className="flex flex-wrap gap-2">
+              {matches.length > 0 ? matches.map((s, i) => <span key={i} className="bg-white text-gray-800 text-xs font-bold px-4 py-2 rounded-xl border border-green-100 shadow-sm">{s}</span>) : <p className="text-xs text-gray-400 italic">No matches found</p>}
+            </div>
+          </div>
+          <div className="bg-red-50/50 p-8 rounded-[2.5rem] border border-red-100">
+            <h4 className="flex items-center gap-2 text-[10px] font-black text-red-400 uppercase mb-4"><XCircle size={14}/> Missing Skills</h4>
+            <div className="flex flex-wrap gap-2">
+              {missingSkills.length > 0 ? missingSkills.map((s, i) => <span key={i} className="bg-white text-gray-400 text-xs font-medium px-4 py-2 rounded-xl border border-red-50 italic">{s}</span>) : <p className="text-xs text-gray-400 italic">No missing skills</p>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// =====================================================
+// 3. COMPONENT: FIND JOBS (The Job Listings)
+// =====================================================
+export const FindJobs = ({ jobs = [], onApply, applications = [], userId }) => {
+  const [keyword, setKeyword] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [selectedType, setSelectedType] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
+  
+  // Extract unique locations and types from jobs
+  const locations = [...new Set(jobs.map(j => j.location).filter(Boolean))].sort();
+  const types = [...new Set(jobs.map(j => j.type).filter(Boolean))].sort();
+  
+  const filtered = jobs.filter(j => {
+    const matchesKeyword = j.title.toLowerCase().includes(keyword.toLowerCase()) || j.company.toLowerCase().includes(keyword.toLowerCase());
+    const matchesLocation = !selectedLocation || j.location === selectedLocation;
+    const matchesType = !selectedType || j.type === selectedType;
+    return matchesKeyword && matchesLocation && matchesType;
+  });
+
+  return (
+    <div className="max-w-5xl mx-auto p-6 space-y-8 animate-in fade-in duration-500">
+      {/* Search and Filters */}
+      <div className="space-y-4">
+        {/* Keyword Search */}
+        <div className="relative">
+          <Search className="absolute left-5 top-5 text-gray-300" size={24}/>
+          <input value={keyword} onChange={e => setKeyword(e.target.value)} className="w-full pl-14 pr-6 py-5 bg-white border border-gray-100 rounded-[2rem] shadow-sm outline-none focus:ring-2 focus:ring-cyan-500 font-medium" placeholder="Search positions..."/>
+        </div>
+        
+        {/* Location and Type Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-bold text-gray-600 uppercase mb-2 block">Location</label>
+            <select value={selectedLocation} onChange={e => setSelectedLocation(e.target.value)} className="w-full px-4 py-3 bg-white border border-gray-100 rounded-[1.5rem] outline-none focus:ring-2 focus:ring-cyan-500 font-medium text-gray-900">
+              <option value="">All Locations</option>
+              {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-600 uppercase mb-2 block">Job Type</label>
+            <select value={selectedType} onChange={e => setSelectedType(e.target.value)} className="w-full px-4 py-3 bg-white border border-gray-100 rounded-[1.5rem] outline-none focus:ring-2 focus:ring-cyan-500 font-medium text-gray-900">
+              <option value="">All Types</option>
+              {types.map(type => <option key={type} value={type}>{type}</option>)}
+            </select>
+          </div>
+        </div>
+        
+        {/* Results count */}
+        <div className="text-xs font-bold text-gray-500 uppercase">
+          Showing {filtered.length} of {jobs.length} positions
+        </div>
+      </div>
+      <div className="grid gap-4">
+        {filtered.map(job => {
+          const isExp = expandedId === job.id;
+          const hasApp = applications.some(a => a.jobId === job.id && a.seekerId === userId);
+          return (
+            <div key={job.id} className={`bg-white rounded-[2.5rem] border transition-all ${isExp ? 'border-cyan-200 shadow-xl' : 'border-gray-50 shadow-sm'}`}>
+              <div className="p-8 flex justify-between items-center">
+                <div className="flex gap-6 items-center">
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${isExp ? 'bg-cyan-600 text-white' : 'bg-gray-50 text-gray-400'}`}><Briefcase size={28}/></div>
+                  <div><h3 className="font-black text-xl text-gray-900">{job.title}</h3><p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{job.company}</p></div>
+                </div>
+                <button onClick={() => setExpandedId(isExp ? null : job.id)} className="text-xs font-black uppercase text-cyan-600 bg-cyan-50 px-6 py-3 rounded-2xl">{isExp ? <ChevronUp size={20}/> : 'View Details'}</button>
+              </div>
+              {isExp && (
+                <div className="px-10 pb-12 pt-2 animate-in slide-in-from-top-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 py-8 border-y border-gray-100 mb-8 font-black text-sm uppercase">
+                    <div><p className="text-gray-400 text-[10px]">Location</p><p>{job.location}</p></div>
+                    <div><p className="text-gray-400 text-[10px]">Salary</p><p>{job.salary}</p></div>
+                  </div>
+                  <p className="mb-10 text-gray-600 text-sm leading-relaxed whitespace-pre-line">{job.description}</p>
+                  {!hasApp ? <button onClick={() => onApply(job.id)} className="w-full bg-gray-900 text-white py-5 rounded-[2rem] font-black uppercase tracking-widest shadow-xl hover:bg-black">Apply Now</button> : <div className="w-full bg-green-50 text-green-700 py-5 rounded-[2rem] font-black text-center border border-green-100 uppercase tracking-widest">Application Submitted</div>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// =====================================================
+// 4. COMPONENT: DASHBOARD OVERVIEW (Tracker)
+// =====================================================
+export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplication, onViewJob }) => {
+  const [withdrawModal, setWithdrawModal] = useState({ isOpen: false, appId: null });
+  const [reason, setReason] = useState("");
+
+  const activeApps = applications.filter(a => a.status !== 'Cancelled');
+  const withdrawnApps = applications.filter(a => a.status === 'Cancelled');
+
+  return (
+    <div className="space-y-12 animate-in fade-in">
+      <section className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+        <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3">
+          <Briefcase className="text-cyan-600" size={28}/> Active Applications
+        </h2>
+        <div className="grid grid-cols-1 gap-6 mt-4">
+          {activeApps.length === 0 ? (
+            <div className="bg-white p-20 rounded-[3rem] border border-dashed text-center text-gray-400 uppercase font-bold">
+              No active applications
+            </div>
+          ) : (
+            activeApps.map(app => {
+              const job = jobs.find(j => j.id === app.jobId);
+              const canWithdraw = ['Applied', 'Screening'].includes(app.status);
+              return (
+                <div key={app.id} className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm relative overflow-hidden group">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="font-black text-2xl tracking-tighter">{job?.title}</h3>
+                      <p className="text-sm font-bold text-cyan-600 uppercase tracking-widest">{job?.company}</p>
+                    </div>
+                    {canWithdraw ? (
+                      <button onClick={() => setWithdrawModal({ isOpen: true, appId: app.id })} className="p-4 bg-red-50 text-red-500 rounded-3xl hover:bg-red-500 hover:text-white transition-all">
+                        <Trash2 size={22}/>
+                      </button>
+                    ) : (
+                      <div className="p-4 bg-gray-50 text-gray-300 rounded-3xl border border-gray-100">
+                        <Lock size={22}/>
+                      </div>
+                    )}
+                  </div>
+                  <ApplicationProcessSteps status={app.status} />
+                  <div className="flex justify-between items-center mt-6 pt-6 border-t border-gray-50">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Applied: {app.date}</span>
+                    <button onClick={() => onViewJob(job)} className="text-xs font-black uppercase text-cyan-600 bg-cyan-50 px-6 py-3 rounded-2xl hover:bg-cyan-600 hover:text-white transition-all">View Match Metrics</button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </section>
+
+      {withdrawnApps.length > 0 && (
+        <section className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+          <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3">
+            <Trash2 className="text-red-500" size={28}/> Withdrawn Applications
+          </h2>
+          <div className="grid grid-cols-1 gap-6 mt-4">
+            {withdrawnApps.map(app => {
+              const job = jobs.find(j => j.id === app.jobId);
+              return (
+                <div key={app.id} className="bg-white p-10 rounded-[3rem] border border-gray-200 shadow-sm opacity-70">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="font-black text-2xl tracking-tighter line-through">{job?.title}</h3>
+                      <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">{job?.company}</p>
+                    </div>
+                    <div className="p-4 bg-gray-50 text-gray-300 rounded-3xl border border-gray-100">
+                      <Lock size={22}/>
+                    </div>
+                  </div>
+                  <ApplicationProcessSteps status={app.status} />
+                  <div className="flex justify-between items-center mt-6 pt-6 border-t border-gray-50">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Applied: {app.date}</span>
+                    <button disabled className="text-xs font-black uppercase text-gray-400 bg-gray-50 px-6 py-3 rounded-2xl">Withdrawn</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {withdrawModal.isOpen && (
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl">
+            <h3 className="text-2xl font-black mb-4">Confirm Withdrawal</h3>
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} className="w-full p-5 bg-gray-50 rounded-2xl h-32 mb-8 outline-none border-none shadow-inner" placeholder="Reason..."/>
+            <div className="flex gap-4"><button onClick={() => setWithdrawModal({isOpen: false})} className="flex-1 py-4 text-sm font-bold text-gray-400 uppercase tracking-widest">Cancel</button><button onClick={() => { onCancelApplication(withdrawModal.appId, reason); setWithdrawModal({isOpen: false}); }} className="flex-1 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase shadow-xl">Confirm</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =====================================================
+// 5. COMPONENTS: TRAININGS & JOB FAIRS
+// =====================================================
+
+// Helper: Check if withdrawal is allowed (at least 1 week before event)
+const canWithdraw = (eventDate) => {
+  if (!eventDate) return true;
+  try {
+    const event = new Date(eventDate);
+    const today = new Date();
+    const daysUntilEvent = Math.ceil((event - today) / (1000 * 60 * 60 * 24));
+    return daysUntilEvent >= 7; // Allow withdrawal only if 7+ days before event
+  } catch (e) {
+    return true;
+  }
+};
+
+export const MyTrainings = ({ trainings = [], profile, onWithdrawTraining }) => {
+    const registered = trainings.filter(t => t.registeredUsers?.includes(profile?.id));
+    return (
+        <div className="grid md:grid-cols-2 gap-6 animate-in fade-in">
+            {registered.length === 0 ? (
+                <div className="col-span-full bg-white p-16 rounded-[3rem] border border-dashed text-center text-gray-400 font-black uppercase tracking-widest">
+                    No Registered Trainings
+                </div>
+            ) : (
+                registered.map(t => (
+                    <div key={t.id} className="bg-white p-8 rounded-[2.5rem] border border-cyan-100 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="flex-1">
+                                <p className="font-black text-gray-900 text-lg tracking-tight mb-1">{t.title}</p>
+                                {t.provider && <p className="text-xs text-gray-500 font-bold uppercase">{t.provider}</p>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {onWithdrawTraining && canWithdraw(t.date) && (
+                                    <button
+                                        onClick={() => onWithdrawTraining(t.id)}
+                                        className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all"
+                                        title="Withdraw (must be 7 days before event)"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
+                                {onWithdrawTraining && !canWithdraw(t.date) && (
+                                    <div className="p-2 bg-gray-50 text-gray-300 rounded-lg" title="Withdrawal not allowed (less than 7 days before event)">
+                                        <Lock size={16} />
+                                    </div>
+                                )}
+                                <div className="bg-cyan-100 text-cyan-700 p-2 rounded-full flex-shrink-0">
+                                    <CheckCircle size={20} className="font-bold" />
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-2 text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-lg">
+                            {t.date && (
+                                <div className="flex items-center gap-2">
+                                    <Clock size={14} className="text-cyan-600" />
+                                    <span className="font-medium">{t.date}</span>
                                 </div>
                             )}
+                            {t.location && (
+                                <div className="flex items-center gap-2">
+                                    <MapPin size={14} className="text-cyan-600" />
+                                    <span className="font-medium">{t.location}</span>
+                                </div>
+                            )}
+                            {t.slots != null && (
+                                <div className="flex items-center gap-2">
+                                    <Users size={14} className="text-cyan-600" />
+                                    <span className="font-medium">{t.slots} slots available</span>
+                                </div>
+                            )}
+                        </div> 
+                        
+                        <div className="flex items-center justify-between pt-3 border-t border-cyan-100">
+                            <span className="text-[10px] font-bold text-cyan-700 uppercase tracking-wider flex items-center gap-1">
+                                <CheckCircle size={12} /> Enrollment Confirmed
+                            </span>
+                        </div>
+                    </div>
+                ))
+            )}
+        </div>
+    );
+};
 
-                            {app.status === 'Cancelled' && app.cancellationReason && (
-                                <div className="mt-2 bg-gray-100 border border-gray-200 p-2 rounded text-xs text-gray-600 max-w-md">
-                                    <span className="font-bold">You cancelled this. Reason:</span> {app.cancellationReason}
+export const MyJobFairs = ({ jobFairs = [], profile, onWithdrawJobFair }) => {
+    const joined = jobFairs.filter(f => f.participants?.includes(profile?.id));
+    return (
+        <div className="grid md:grid-cols-2 gap-6 animate-in fade-in">
+            {joined.length === 0 ? (
+                <div className="col-span-full bg-white p-16 rounded-[3rem] border border-dashed text-center text-gray-400 font-black uppercase tracking-widest">
+                    No Registered Job Fairs
+                </div>
+            ) : (
+                joined.map(f => (
+                    <div key={f.id} className="bg-white p-8 rounded-[2.5rem] border border-cyan-100 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="flex-1">
+                                <p className="font-black text-gray-900 text-lg tracking-tight mb-1">{f.title}</p>
+                                {f.organizer && <p className="text-xs text-gray-500 font-bold uppercase">{f.organizer}</p>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {onWithdrawJobFair && canWithdraw(f.date) && (
+                                    <button
+                                        onClick={() => onWithdrawJobFair(f.id)}
+                                        className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all"
+                                        title="Withdraw (must be 7 days before event)"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
+                                {onWithdrawJobFair && !canWithdraw(f.date) && (
+                                    <div className="p-2 bg-gray-50 text-gray-300 rounded-lg" title="Withdrawal not allowed (less than 7 days before event)">
+                                        <Lock size={16} />
+                                    </div>
+                                )}
+                                <div className="bg-cyan-100 text-cyan-700 px-3 py-1 rounded-full flex-shrink-0">
+                                    <CheckCircle size={18} className="font-bold" />
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-2 text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-lg">
+                            {f.date && (
+                                <div className="flex items-center gap-2">
+                                    <Clock size={14} className="text-cyan-600" />
+                                    <span className="font-medium">{f.date}</span>
+                                </div>
+                            )}
+                            {f.location && (
+                                <div className="flex items-center gap-2">
+                                    <MapPin size={14} className="text-cyan-600" />
+                                    <span className="font-medium">{f.location}</span>
                                 </div>
                             )}
                         </div>
                         
-                        <div className="text-right flex flex-col items-end gap-2">
-                            {/* ✅ FIXED: Badge Colors for New Statuses */}
-                            <span className={`block text-sm font-bold px-3 py-1 rounded-full ${
-                                app.status === 'Hired' ? 'bg-green-100 text-green-800' :
-                                app.status === 'Not Selected' ? 'bg-red-100 text-red-800' :
-                                app.status === 'Cancelled' ? 'bg-gray-200 text-gray-600' :
-                                app.status === 'Interviewed' ? 'bg-blue-100 text-blue-800' :
-                                'bg-yellow-100 text-yellow-800'
-                            }`}>
-                                {app.status}
+                        {f.companies && f.companies.length > 0 && (
+                            <div className="mb-4">
+                                <p className="text-[10px] font-bold text-gray-500 uppercase mb-2">Companies Attending</p>
+                                <div className="flex flex-wrap gap-1">
+                                    {f.companies.slice(0, 3).map((c, idx) => (
+                                        <span key={idx} className="text-[10px] bg-cyan-50 text-cyan-600 px-2 py-1 rounded font-bold">{c}</span>
+                                    ))}
+                                    {f.companies.length > 3 && <span className="text-[10px] text-gray-500">+{f.companies.length - 3} more</span>}
+                                </div>
+                            </div>
+                        )}
+                        
+                        <div className="flex items-center justify-between pt-3 border-t border-cyan-100">
+                            <span className="text-[10px] font-bold text-cyan-700 uppercase tracking-wider flex items-center gap-1">
+                                <CheckCircle size={12} /> Slot Confirmed
                             </span>
-
-                            {canCancel && (
-                                <button 
-                                    onClick={() => onCancelApplication(app.id)}
-                                    className="text-xs text-red-600 hover:text-red-800 hover:underline font-medium"
-                                >
-                                    Cancel Application
-                                </button>
-                            )}
-
-                            {!app.hasReviewed && app.status === 'Hired' && <button onClick={() => {setModalType('review'); setTempInput({appId: app.id})}} className="text-xs border px-3 py-1 rounded mt-2 hover:bg-gray-50">Rate Company</button>}
                         </div>
                     </div>
-                ) 
-            })}
+                ))
+            )}
         </div>
-      )}
+    );
+};
 
-      {activeTab === 'profile & resume' && (
-         <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-sm border">
-                <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-gray-900">
-                    <User className="text-cyan-600"/> Personal Information
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                        <p className="text-gray-500 text-xs font-bold uppercase mb-1">Full Name</p>
-                        <p className="font-bold text-gray-900">{profile.name}</p>
-                    </div>
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                        <p className="text-gray-500 text-xs font-bold uppercase mb-1">QCitizen ID</p>
-                        <p className="font-bold text-gray-900">{profile.qcId || "N/A"}</p>
-                    </div>
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Clock size={14} className="text-gray-400"/>
-                            <p className="text-gray-500 text-xs font-bold uppercase">Birthday</p>
-                        </div>
-                        <p className="font-bold text-gray-900">
-                            {profile.bdayMonth && profile.bdayDay && profile.bdayYear
-                                ? `${profile.bdayMonth} ${profile.bdayDay}, ${profile.bdayYear}`
-                                : 'N/A'}
-                        </p>
-                    </div>
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Smile size={14} className="text-gray-400"/>
-                            <p className="text-gray-500 text-xs font-bold uppercase">Gender</p>
-                        </div>
-                        <p className="font-bold text-gray-900">{profile.gender || "Not specified"}</p>
-                    </div>
-                </div>
-            </div>
+// =====================================================
+// 6. MAIN DEFAULT EXPORT (Integrated Layout)
+// =====================================================
+const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], initialTab, onCancelApplication, onViewJob, onNavigate }) => {
+  const [activeTab, setActiveTab] = useState(initialTab || 'overview');
+  const [resumeFile, setResumeFile] = useState(null);
+  const [withdrawModal, setWithdrawModal] = useState({ isOpen: false, type: null, id: null, title: '' });
+  const fileInputRef = useRef(null);
 
-            <div className="bg-white p-6 rounded-xl shadow-sm border">
-                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                    <FileText className="text-cyan-600"/> Current Resume
-                </h3>
-                {uploadError && (
-                    <div className="bg-red-50 border border-red-200 p-3 rounded-lg mb-4 text-red-800 text-sm font-medium">
-                        <AlertCircle size={16} className="inline mr-2"/> Upload Failed: {uploadError}
-                    </div>
-                )}
-                {profile.resumePath ? ( 
-                    <div className="flex items-center justify-between bg-green-50 p-4 rounded-lg border border-green-200">
-                        <div className="flex items-center gap-4">
-                            <div className="bg-white p-2 rounded shadow-sm">
-                                <FileText size={32} className="text-red-500"/>
-                            </div>
-                            <div>
-                                <p className="font-bold text-gray-800">{profile.resumePath?.split('/').pop() || 'File on Record'}</p>
-                                <p className="text-xs text-green-700">Ready for applications</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={handleDownloadResume} className="text-sm bg-blue-600 text-white px-3 py-1 rounded font-bold hover:bg-blue-700 flex items-center gap-1"><Download size={14}/> Download</button>
-                            <button onClick={triggerFileInput} className="text-sm text-blue-600 font-bold hover:underline">Replace</button>
-                            <button onClick={()=>onUpdateProfile({...profile, resumePath: null})} className="text-sm text-red-500 font-bold hover:underline">Remove</button>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                        <p className="text-gray-500 mb-4">No resume uploaded yet.</p>
-                        <button onClick={triggerFileInput} disabled={isUploading} className="bg-black text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-800 flex items-center gap-2 mx-auto disabled:bg-gray-400">
-                            {isUploading ? <Loader2 className="animate-spin" size={18}/> : <UploadCloud size={18}/>} 
-                            {isUploading ? "Uploading..." : "Upload PDF Resume"}
-                        </button>
-                    </div>
-                )}
-            </div>
+  useEffect(() => { if (initialTab) setActiveTab(initialTab); }, [initialTab]);
 
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl shadow-lg text-white p-8 flex flex-col md:flex-row items-center justify-between gap-6">
-                <div>
-                    <h3 className="text-2xl font-bold mb-2">Don't have a resume?</h3>
-                    <p className="text-blue-100 max-w-md">Create a professional resume in minutes using our AI-powered builder. Choose from multiple templates, download the PDF, and upload it here.</p>
-                </div>
-                <button 
-                    onClick={() => onNavigate('resume-builder')} 
-                    className="bg-white text-blue-700 px-6 py-3 rounded-lg font-bold shadow-md hover:bg-gray-100 transition flex items-center gap-2 whitespace-nowrap"
-                >
-                    <Edit3 size={18}/> Open Resume Builder
+  // Withdraw from training
+  const handleWithdrawTraining = (trainingId) => {
+    const training = trainings.find(t => t.id === trainingId);
+    setWithdrawModal({
+      isOpen: true,
+      type: 'training',
+      id: trainingId,
+      title: training?.title || 'Training'
+    });
+  };
+
+  // Withdraw from job fair
+  const handleWithdrawJobFair = (jobFairId) => {
+    const jobFair = jobFairs.find(f => f.id === jobFairId);
+    setWithdrawModal({
+      isOpen: true,
+      type: 'jobfair',
+      id: jobFairId,
+      title: jobFair?.title || 'Job Fair'
+    });
+  };
+
+  // Confirm withdrawal
+  const handleConfirmWithdrawal = () => {
+    // Withdrawal logic would be implemented here
+    // This would typically be handled by the parent App component
+    setWithdrawModal({ isOpen: false, type: null, id: null, title: '' });
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) setResumeFile(file);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50/50 pb-20">
+      <div className="max-w-6xl mx-auto p-6">
+        <header className="mb-10"><h1 className="text-6xl font-black text-gray-900 tracking-tighter">CityJobLink</h1></header>
+        
+        {/* TABS: Gamit ang lowercase exact matching para sigurado ang click event */}
+        <nav className="flex gap-2 mb-16 bg-white p-3 rounded-full border border-gray-100 shadow-sm w-fit overflow-x-auto mx-auto md:mx-0">
+          {['overview', 'trainings', 'job fairs', 'profile'].map(tab => (
+            <button 
+                key={tab} 
+                onClick={() => setActiveTab(tab)} 
+                className={`px-12 py-5 rounded-full text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-gray-900 text-white shadow-2xl scale-110' : 'text-gray-400 hover:text-gray-900'}`}
+            >
+              {tab === 'trainings' ? 'Trainings' : tab}
+            </button>
+          ))}
+        </nav>
+
+        {activeTab === 'overview' && <DashboardOverview applications={applications} jobs={jobs} onCancelApplication={onCancelApplication} onViewJob={onViewJob} />}
+        {activeTab === 'trainings' && <MyTrainings trainings={trainings} profile={profile} onWithdrawTraining={handleWithdrawTraining} />}
+        {activeTab === 'job fairs' && <MyJobFairs jobFairs={jobFairs} profile={profile} onWithdrawJobFair={handleWithdrawJobFair} />}
+        
+        {activeTab === 'profile' && (
+          <div className="max-w-3xl mx-auto space-y-6">
+            <div className="bg-white p-12 rounded-[3.5rem] border shadow-sm">
+              <h3 className="font-black text-3xl mb-10 flex items-center gap-4"><User size={32} className="text-cyan-500"/> Account Profile</h3>
+              
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Resume Builder */}
+                <button onClick={() => onNavigate('resume-builder')} className="p-10 border-2 border-cyan-100 rounded-[2.5rem] hover:bg-cyan-50 transition-all text-left group">
+                  <div className="bg-cyan-100 text-cyan-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform"><FilePlus size={24}/></div>
+                  <h4 className="font-black text-xl mb-2">Resume Builder</h4>
+                  <p className="text-xs text-gray-500 font-medium leading-relaxed">Create an optimized resume.</p>
                 </button>
-            </div>
-         </div>
-      )}
 
-      {activeTab === 'trainings' && (
-        <div className="grid md:grid-cols-2 gap-4">
-          {myTrainings.length === 0 ? (
-            <p className="text-gray-500">You haven't registered for any trainings yet.</p>
-          ) : (
-            myTrainings.map(t => (
-              <div key={t.id} className="bg-white p-5 rounded border shadow-sm">
-                <h3 className="font-bold text-lg">{t.title}</h3>
-                <p className="text-sm text-gray-500 mb-2">{t.provider}</p>
-                <button onClick={()=>onUpdateTrainings(t.id, profile.id, 'leave')} className="text-red-500 text-sm font-bold mt-2 hover:underline">Cancel Registration</button>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-      
-      {activeTab === 'jobfairs' && (
-        <div className="space-y-4">
-            {myFairs.length === 0 ? <p className="text-gray-500 text-center py-8">You haven't registered for any job fairs yet.</p> : myFairs.map(f => (
-                <div key={f.id} className="bg-white rounded-xl border shadow-sm overflow-hidden flex flex-col md:flex-row hover:shadow-md transition-shadow">
-                    <div className="w-full md:w-48 h-40 bg-gray-200 shrink-0 relative"><img src={f.image} alt={f.title} className="w-full h-full object-cover"/></div>
-                    <div className="p-6 flex-1 flex flex-col justify-between">
-                        <div>
-                            <div className="flex justify-between items-start mb-2"><h3 className="font-bold text-xl">{f.title}</h3><span className="bg-green-100 text-green-800 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1"><CheckCircle size={12}/> Going</span></div>
-                            <div className="text-sm text-gray-600 space-y-1 mb-4">
-                                <div className="flex items-center gap-2"><Calendar size={14} className="text-cyan-600"/> {f.date}</div>
-                                <div className="flex items-center gap-2"><Clock size={14} className="text-cyan-600"/> {f.time}</div>
-                                <div className="flex items-center gap-2"><MapPin size={14} className="text-cyan-600"/> {f.location}</div>
+                {/* Resume Upload Module with Visual Holder */}
+                <div className="p-10 border-2 border-dashed border-gray-200 rounded-[2.5rem] hover:bg-gray-50 transition-all text-left">
+                  <div className="bg-gray-100 text-gray-400 w-12 h-12 rounded-2xl flex items-center justify-center mb-6"><Upload size={24}/></div>
+                  <h4 className="font-black text-xl mb-2">Upload Resume</h4>
+                  
+                  {!resumeFile ? (
+                    <>
+                        <p className="text-xs text-gray-500 font-medium mb-6">Already have a file? Upload PDF.</p>
+                        <button onClick={() => fileInputRef.current.click()} className="text-xs font-black text-cyan-600 uppercase tracking-widest hover:underline">Select File</button>
+                    </>
+                  ) : (
+                    <div className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between shadow-sm animate-in zoom-in">
+                        <div className="flex items-center gap-3">
+                            <FileCheck className="text-green-500" size={20}/>
+                            <div className="overflow-hidden">
+                                <p className="text-xs font-black text-gray-800 truncate max-w-[120px]">{resumeFile.name}</p>
+                                <p className="text-[10px] text-gray-400 uppercase font-bold">PDF Document</p>
                             </div>
                         </div>
-                        <div className="mt-4 pt-4 border-t flex gap-3"><button onClick={() => setSelectedTicket(f)} className="text-sm font-bold text-blue-600 flex items-center gap-2 hover:bg-blue-50 px-3 py-2 rounded transition-colors"><Ticket size={16}/> View Ticket</button></div>
+                        <button onClick={() => setResumeFile(null)} className="p-2 hover:bg-red-50 text-red-400 rounded-full transition-colors"><X size={16}/></button>
                     </div>
+                  )}
+                  <input type="file" ref={fileInputRef} className="hidden" accept=".pdf" onChange={handleFileUpload} />
                 </div>
-            ))}
-        </div>
-      )}
-
-      {selectedTicket && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl relative">
-                <button onClick={() => setSelectedTicket(null)} className="absolute top-4 right-4 text-gray-400 hover:text-black z-10"><X size={24}/></button>
-                <div className="bg-black text-white p-6 text-center relative overflow-hidden">
-                    <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rotate-45"></div>
-                    <h3 className="font-bold text-lg uppercase tracking-widest opacity-70 mb-1">Digital Entry Pass</h3>
-                    <h2 className="text-2xl font-bold relative z-10">{selectedTicket.title}</h2>
-                </div>
-                <div className="p-8 text-center space-y-6">
-                    <div className="bg-gray-50 border-2 border-dashed border-gray-300 p-6 rounded-xl">
-                        <p className="text-xs font-bold text-gray-400 uppercase mb-2">Your Queuing Number</p>
-                        <h1 className="text-5xl font-black text-gray-900 tracking-tighter">QF-{selectedTicket.id.toString().slice(-2)}{profile.id.toString().slice(-3)}</h1>
-                    </div>
-                    <div className="space-y-3 text-sm text-gray-600">
-                        <div className="flex items-center justify-center gap-2"><Calendar size={16} className="text-cyan-600"/> {selectedTicket.date}</div>
-                        <div className="flex items-center justify-center gap-2"><Clock size={16} className="text-cyan-600"/> {selectedTicket.time}</div>
-                        <div className="flex items-center justify-center gap-2"><MapPin size={16} className="text-cyan-600"/> {selectedTicket.location}</div>
-                    </div>
-                    <div className="pt-6 border-t">
-                        <button onClick={() => window.print()} className="flex items-center justify-center gap-2 text-sm text-gray-600 hover:text-black w-full font-medium transition-colors"><Printer size={16}/><span>Print Ticket / Queue Number</span></button>
-                    </div>
-                </div>
+              </div>
             </div>
-        </div>
-      )}
+          </div>
+        )}
 
-      {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100 animate-in zoom-in duration-200">
-                <div className="bg-green-50 p-6 flex flex-col items-center text-center border-b border-green-100">
-                    <div className="p-4 bg-green-100 text-green-600 rounded-full mb-4">
-                        <CheckCircle size={40} />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900">Resume Uploaded!</h3>
-                    <p className="text-sm text-gray-600 mt-2">Your resume has been successfully attached to your profile.</p>
-                </div>
-                <div className="p-6">
-                    <button onClick={() => setShowUploadModal(false)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition-colors shadow-lg">Great</button>
-                </div>
+        {/* Withdrawal Modal for Trainings & Job Fairs */}
+        {withdrawModal.isOpen && (
+          <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl">
+              <h3 className="text-2xl font-black mb-2">Confirm Withdrawal</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                You are about to withdraw from <span className="font-bold">{withdrawModal.title}</span>. This will free up your slot for others.
+              </p>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-xs text-yellow-800">
+                <p className="font-bold mb-1">⚠️ Important</p>
+                <p>Withdrawals are only allowed up to 1 week before the event. After that, the slot cannot be released.</p>
+              </div>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setWithdrawModal({ isOpen: false, type: null, id: null, title: '' })}
+                  className="flex-1 py-3 text-sm font-bold text-gray-600 uppercase tracking-widest border border-gray-200 rounded-2xl hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmWithdrawal}
+                  className="flex-1 py-3 bg-red-500 text-white rounded-2xl text-sm font-black uppercase shadow-xl hover:bg-red-600 transition-colors"
+                >
+                  Withdraw
+                </button>
+              </div>
             </div>
-        </div>
-      )}
-
+          </div>
+        )}
+      </div>
     </div>
   );
 };
