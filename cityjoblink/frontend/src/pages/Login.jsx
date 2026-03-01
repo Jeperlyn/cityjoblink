@@ -195,6 +195,9 @@ const handleSubmit = async (e) => {
                     middleName: formData.middleName,
                     suffix: formData.suffix,
                     companyName: formData.companyName,
+                    // ✅ FIXED: Ibinabalik natin itong dalawa para ma-save sa registration
+                    industry: formData.industry,
+                    companyAddress: formData.companyAddress,
                     qcId: formData.qcId,
                     bdayMonth: formData.bdayMonth,
                     bdayDay: formData.bdayDay,
@@ -210,7 +213,7 @@ const handleSubmit = async (e) => {
             const regData = await regResponse.json();
             
             if (regData.status === 'success') {
-                // Trigger the OTP screen
+// Trigger the OTP screen
                 setIsOtpStep(true); 
                 const successMessage = regData.dev_otp
                     ? `${regData.message}\n\nDEV OTP: ${regData.dev_otp}`
@@ -226,7 +229,7 @@ const handleSubmit = async (e) => {
             setIsLoading(false);
         }
     } else {
-        // --- LOGIN FLOW ---
+// --- LOGIN FLOW ---
         setIsLoading(true);
         try {
             const response = await fetch('http://localhost:8000/api/login', {
@@ -366,7 +369,17 @@ const handleSubmit = async (e) => {
                 {mode === 'register' && role === 'Employer' && (
                     <div className="space-y-3">
                         <input required className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="Company Name" value={formData.companyName} onChange={e => setFormData({...formData, companyName: e.target.value})} />
-                        <select className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 text-sm" value={formData.industry} onChange={e => setFormData({...formData, industry: e.target.value})}><option value="">Select Industry</option><option>BPO / Call Center</option><option>IT & Software</option><option>Healthcare</option><option>Retail & Sales</option></select>
+                        {/* ✅ FIXED: Ginawa nating kumpleto ang dropdown options para magtugma sa Dashboard */}
+                        <select className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 text-sm" value={formData.industry} onChange={e => setFormData({...formData, industry: e.target.value})}>
+                            <option value="">Select Industry</option>
+                            <option>BPO / Call Center</option>
+                            <option>IT & Software</option>
+                            <option>Healthcare</option>
+                            <option>Construction</option>
+                            <option>Finance</option>
+                            <option>Retail & Sales</option>
+                            <option>Manufacturing</option>
+                        </select>
                         <input required className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="Business Address" value={formData.companyAddress} onChange={e => setFormData({...formData, companyAddress: e.target.value})} />
                     </div>
                 )}

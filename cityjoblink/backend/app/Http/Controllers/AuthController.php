@@ -67,6 +67,9 @@ class AuthController extends Controller
                 'role' => $role,
                 'password' => Hash::make($request->password),
                 'otp' => (string) $otpCode,
+                // ✅ FIXED: Idinagdag sa Cache para hindi makalimutan bago ang OTP verification
+                'industry' => $role === 'Employer' ? $request->industry : null,
+                'address' => $role === 'Employer' ? $request->companyAddress : null,
             ], now()->addMinutes(10));
 
             $mailDelivered = true;
@@ -164,6 +167,9 @@ class AuthController extends Controller
                 'otp' => null,
                 'is_verified' => ($pendingRegistration['role'] ?? 'Seeker') === 'Employer' ? false : true,
                 'uploaded_docs' => false,
+                // ✅ FIXED: Ipapasok na sa Database mula sa Cache
+                'industry' => $pendingRegistration['industry'] ?? null,
+                'address' => $pendingRegistration['address'] ?? null,
             ]);
 
             Cache::forget($cacheKey);

@@ -271,6 +271,87 @@ class FeatureController extends Controller
         ]);
     }
 
+    // ✅ BAGONG DAGDAG: UPDATE JOB FUNCTION
+    public function updateJob(Request $request, $id)
+    {
+        $request->validate([
+            'email' => ['required', 'email'],
+            'title' => ['required', 'string', 'max:255'],
+            'location' => ['required', 'string', 'max:255'],
+            'employment_type' => ['required', 'string', 'max:100'],
+            'description' => ['nullable', 'string'],
+            'required_skills' => ['nullable', 'array'],
+            'required_skills.*' => ['string', 'max:100'],
+            'salary_min' => ['nullable', 'integer', 'min:0'],
+            'salary_max' => ['nullable', 'integer', 'min:0'],
+            'educational_attainment_required' => ['nullable', 'string', 'max:255'],
+            'industry' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $employer = User::where('email', $request->email)->first();
+        if (!$employer) {
+            return response()->json(['status' => 'error', 'message' => 'Employer not found.'], 404);
+        }
+
+        $job = DB::table('jobs_catalog')->where('id', $id)->first();
+        if (!$job) {
+            return response()->json(['status' => 'error', 'message' => 'Job not found.'], 404);
+        }
+
+        // Security check: Siguraduhing ang may-ari ng job ang nag-uupdate
+        if ((int) $job->employer_id !== (int) $employer->id) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized to update this job.'], 403);
+        }
+
+        DB::table('jobs_catalog')->where('id', $id)->update([
+            'title' => $request->title,
+            'location' => $request->location,
+            'salary_min' => $request->salary_min,
+            'salary_max' => $request->salary_max,
+            'employment_type' => $request->employment_type,
+            'industry' => $request->industry,
+            'required_skills' => json_encode($request->required_skills ?? []),
+            'educational_attainment_required' => $request->educational_attainment_required,
+            'description' => $request->description,
+            'updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Job updated successfully.',
+            'job' => DB::table('jobs_catalog')->where('id', $id)->first(),
+        ]);
+    }
+
+    // ✅ BAGONG DAGDAG: DELETE JOB FUNCTION
+    public function deleteJob(Request $request, $id)
+    {
+        $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $employer = User::where('email', $request->email)->first();
+        if (!$employer) {
+            return response()->json(['status' => 'error', 'message' => 'Employer not found.'], 404);
+        }
+
+        $job = DB::table('jobs_catalog')->where('id', $id)->first();
+        if (!$job) {
+            return response()->json(['status' => 'error', 'message' => 'Job not found.'], 404);
+        }
+
+        if ((int) $job->employer_id !== (int) $employer->id) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized to delete this job.'], 403);
+        }
+
+        DB::table('jobs_catalog')->where('id', $id)->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Job deleted successfully.',
+        ]);
+    }
+
     public function adminEmployers()
     {
         $employers = DB::table('users')

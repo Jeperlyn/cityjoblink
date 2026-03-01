@@ -861,6 +861,47 @@ const App = () => {
         }
     };
 
+    // ✅ ADDED: Function to handle updating an existing job
+    const handleUpdateJob = async (updatedJobPayload) => {
+        if (!user?.email) {
+            showToast('Missing account email.', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/jobs/${updatedJobPayload.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                    email: user.email,
+                    title: updatedJobPayload.title,
+                    location: updatedJobPayload.location,
+                    employment_type: updatedJobPayload.type,
+                    description: updatedJobPayload.description,
+                    required_skills: updatedJobPayload.requiredSkills || [],
+                    salary_min: updatedJobPayload.salaryMin ?? null,
+                    salary_max: updatedJobPayload.salaryMax ?? null,
+                    educational_attainment_required: updatedJobPayload.educationalAttainmentRequired || null,
+                    industry: user.industry || null,
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data?.message || 'Failed to update job.');
+            }
+
+            const refreshedJobs = await fetchJobs();
+            setJobs(refreshedJobs);
+            showToast('Job updated successfully.', 'success');
+        } catch (error) {
+            showToast(error?.message || 'Failed to update job.', 'error');
+        }
+    };
+
     const renderContent = () => {
         // 1. PUBLIC VIEWS (Routing Fix: Included explicit checks)
         if (currentView === 'home') return <LandingPage onNavigate={handleNavigate} />;
@@ -875,11 +916,10 @@ const App = () => {
         if (!user || currentView === 'login') return <LoginScreen onLogin={handleLogin} loginError={loginError} setLoginError={setLoginError} />;
 
         // 3. PROTECTED VIEWS
-       // Halimbawa sa App.jsx:
         if (currentView === 'seeker-dash') return (
             <SeekerDashboard 
                 profile={user} 
-                applications={applications || []} // Gumamit ng || [] para hindi mag-blank kung null
+                applications={applications || []} 
                 jobs={jobs || []} 
                 trainings={trainings || []}
                 jobFairs={jobFairs || []}
@@ -894,7 +934,9 @@ const App = () => {
             />
         );
 
-        if (currentView === 'employer-dash') return <EmployerDashboard profile={user} jobs={jobs} applications={applications} seekers={employerSeekers} onPostJob={handlePostJob} onUpdateStatus={handleUpdateAppStatus} onUpdateProfile={(u)=>setUser(normalizeUserProfile(u))} onUploadDocs={handleUploadEmployerDocs} onOpenChat={(id)=>{setTargetChatId(id); setCurrentView('messages');}} />;
+        // ✅ FIXED: Passed handleUpdateJob to EmployerDashboard
+        if (currentView === 'employer-dash') return <EmployerDashboard profile={user} jobs={jobs} applications={applications} seekers={employerSeekers} onPostJob={handlePostJob} onUpdateJob={handleUpdateJob} onUpdateStatus={handleUpdateAppStatus} onUpdateProfile={(u)=>setUser(normalizeUserProfile(u))} onUploadDocs={handleUploadEmployerDocs} onOpenChat={(id)=>{setTargetChatId(id); setCurrentView('messages');}} />;
+        
         if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} onVerifyEmployer={handleVerifyEmployer} jobFairs={jobFairs} onAddJobFair={()=>{}} />;
         if (currentView === 'matchmaker') return <FindJobs jobs={jobs} onApply={handleApply} applications={applications} userId={user.id} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} />;
         if (currentView === 'job-details') {
@@ -902,7 +944,7 @@ const App = () => {
             return (
                 <JobDetailsPage 
                     job={selectedJob} 
-                    matchData={matchInfo} // Siguraduhing naipapasa ito
+                    matchData={matchInfo} 
                     onBack={() => setCurrentView(previousView)} 
                 />
             );
