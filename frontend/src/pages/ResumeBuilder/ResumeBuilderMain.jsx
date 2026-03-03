@@ -34,7 +34,7 @@ export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
     summary: "",
   });
 
-  // ✅ AUTO-FILL DATA (Dito nangyayari ang magic pag may naka-login)
+
   useEffect(() => {
     if (user) {
       // Split name logic (Simple split by space)

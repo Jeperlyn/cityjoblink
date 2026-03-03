@@ -6,6 +6,8 @@ import {
   Star, Target, Zap, TrendingUp, Upload, FilePlus, 
   ExternalLink, Clock, MapPin, FileCheck, X, AlertCircle
 } from 'lucide-react';
+import Swal from 'sweetalert2';
+import 'sweetalert2/dist/sweetalert2.min.css';
 
 // =====================================================
 // 1. COMPONENT: APPLICATION PROGRESS STEPPER
@@ -195,8 +197,51 @@ export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplic
   const activeApps = applications.filter(a => a.status !== 'Cancelled');
   const withdrawnApps = applications.filter(a => a.status === 'Cancelled');
 
+  const openWithdrawModal = (appId) => {
+    setWithdrawModal({ isOpen: true, appId });
+    setReason("");
+  };
+  const closeWithdrawModal = () => {
+    setWithdrawModal({ isOpen: false, appId: null });
+    setReason("");
+  };
+
+  const handleConfirmWithdrawal = () => {
+    if (!reason.trim()) {
+      // warning toast
+      Swal.fire({
+        icon: 'warning',
+        title: 'Reason required',
+        text: 'Please enter a reason before confirming.',
+        toast: true,
+        position: 'top',
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true
+      });
+      return;
+    }
+
+    onCancelApplication(withdrawModal.appId, reason);
+
+    // success check‑mark toast
+    Swal.fire({
+      icon: 'success',
+      title: 'Withdrawn',
+      text: 'Your application has been withdrawn.',
+      toast: true,
+      position: 'top',
+      timer: 2000,
+      showConfirmButton: false,
+      timerProgressBar: true
+    });
+
+    closeWithdrawModal();
+  };
+
   return (
     <div className="space-y-12 animate-in fade-in">
+
       <section className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
         <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3">
           <Briefcase className="text-cyan-600" size={28}/> Active Applications
@@ -218,7 +263,10 @@ export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplic
                       <p className="text-sm font-bold text-cyan-600 uppercase tracking-widest">{job?.company}</p>
                     </div>
                     {canWithdraw ? (
-                      <button onClick={() => setWithdrawModal({ isOpen: true, appId: app.id })} className="p-4 bg-red-50 text-red-500 rounded-3xl hover:bg-red-500 hover:text-white transition-all">
+                      <button
+                        onClick={() => openWithdrawModal(app.id)}
+                        className="p-4 bg-red-50 text-red-500 rounded-3xl hover:bg-red-500 hover:text-white transition-all"
+                      >
                         <Trash2 size={22}/>
                       </button>
                     ) : (
@@ -274,8 +322,26 @@ export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplic
         <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl">
             <h3 className="text-2xl font-black mb-4">Confirm Withdrawal</h3>
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} className="w-full p-5 bg-gray-50 rounded-2xl h-32 mb-8 outline-none border-none shadow-inner" placeholder="Reason..."/>
-            <div className="flex gap-4"><button onClick={() => setWithdrawModal({isOpen: false})} className="flex-1 py-4 text-sm font-bold text-gray-400 uppercase tracking-widest">Cancel</button><button onClick={() => { onCancelApplication(withdrawModal.appId, reason); setWithdrawModal({isOpen: false}); }} className="flex-1 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase shadow-xl">Confirm</button></div>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="w-full p-5 bg-gray-50 rounded-2xl h-32 mb-8 outline-none border-none shadow-inner"
+              placeholder="Reason..."
+            />
+            <div className="flex gap-4">
+              <button
+                onClick={closeWithdrawModal}
+                className="flex-1 py-4 text-sm font-bold text-gray-400 uppercase tracking-widest border border-gray-200 rounded-2xl hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmWithdrawal}
+                className="flex-1 py-4 bg-red-500 text-white rounded-2xl text-sm font-black uppercase shadow-xl hover:bg-red-600 transition-colors"
+              >
+                Confirm
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -449,6 +515,20 @@ export const MyJobFairs = ({ jobFairs = [], profile, onWithdrawJobFair }) => {
 // =====================================================
 // 6. MAIN DEFAULT EXPORT (Integrated Layout)
 // =====================================================
+const toastMsg = (title, icon = 'success') => {
+  const Toast = Swal.mixin({
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 3000,
+    timerProgressBar: true,
+  });
+
+  Toast.fire({
+    icon: icon,
+    title: title
+  });
+};
 const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], initialTab, onCancelApplication, onViewJob, onNavigate, onUpdateProfile }) => {
   const [activeTab, setActiveTab] = useState(initialTab || 'overview');
   const [resumeFile, setResumeFile] = useState(null);
@@ -463,7 +543,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
       : null);
 
   useEffect(() => { if (initialTab) setActiveTab(initialTab); }, [initialTab]);
-
+ 
   useEffect(() => {
     if (profile?.resume_path) {
       const segments = profile.resume_path.split('/');
@@ -499,9 +579,12 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
 
   // Confirm withdrawal
   const handleConfirmWithdrawal = () => {
-    // Withdrawal logic would be implemented here
-    // This would typically be handled by the parent App component
-    setWithdrawModal({ isOpen: false, type: null, id: null, title: '' });
+    if (!reason.trim()) {
+      setToastMessage("Reason for withdrawal is required.");
+      return;
+    }
+    onCancelApplication(withdrawModal.appId, reason);
+    closeWithdrawModal();
   };
 
 const handleFileUpload = async (e) => {
@@ -614,58 +697,121 @@ const handleRemoveResume = async () => {
         {activeTab === 'trainings' && <MyTrainings trainings={trainings} profile={profile} onWithdrawTraining={handleWithdrawTraining} />}
         {activeTab === 'job fairs' && <MyJobFairs jobFairs={jobFairs} profile={profile} onWithdrawJobFair={handleWithdrawJobFair} />}
         
-        {activeTab === 'profile' && (
-          <div className="max-w-3xl mx-auto space-y-6">
-            <div className="bg-white p-12 rounded-[3.5rem] border shadow-sm">
-              <h3 className="font-black text-3xl mb-10 flex items-center gap-4"><User size={32} className="text-cyan-500"/> Account Profile</h3>
-              {birthdayDisplay && (
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-8">
-                  Birthday: {birthdayDisplay}
-                </p>
-              )}
-              
-              <div className="grid md:grid-cols-2 gap-6">
-                {/* Resume Builder */}
-                <button onClick={() => onNavigate('resume-builder')} className="p-10 border-2 border-cyan-100 rounded-[2.5rem] hover:bg-cyan-50 transition-all text-left group">
-                  <div className="bg-cyan-100 text-cyan-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform"><FilePlus size={24}/></div>
-                  <h4 className="font-black text-xl mb-2">Resume Builder</h4>
-                  <p className="text-xs text-gray-500 font-medium leading-relaxed">Create an optimized resume.</p>
-                </button>
+       {activeTab === 'profile' && (
+  <div className="max-w-3xl mx-auto space-y-6">
+    <div className="bg-white p-12 rounded-[3.5rem] border shadow-sm">
+      {/* Header Section */}
+      <div className="mb-10">
+        <p className="text-[10px] font-black text-cyan-600 uppercase tracking-[0.25em] mb-3">Account Profile</p>
+        <h3 className="font-black text-5xl text-gray-900 tracking-tight">
+          {profile?.name || "User Name"}
+        </h3>
+      </div>
 
-                {/* Resume Upload Module with Visual Holder */}
-                <div className="p-10 border-2 border-dashed border-gray-200 rounded-[2.5rem] hover:bg-gray-50 transition-all text-left">
-                  <div className="bg-gray-100 text-gray-400 w-12 h-12 rounded-2xl flex items-center justify-center mb-6"><Upload size={24}/></div>
-                  <h4 className="font-black text-xl mb-2">Upload Resume</h4>
-                  
-                  {!resumeFile ? (
-                    <>
-                        <p className="text-xs text-gray-500 font-medium mb-6">Already have a file? Upload PDF.</p>
-                        <button onClick={() => fileInputRef.current.click()} className="text-xs font-black text-cyan-600 uppercase tracking-widest hover:underline">Select File</button>
-                    </>
-                  ) : (
-                    <div className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between shadow-sm animate-in zoom-in">
-                        <div className="flex items-center gap-3">
-                            <FileCheck className="text-green-500" size={20}/>
-                            <div className="overflow-hidden">
-                                <p className="text-xs font-black text-gray-800 truncate max-w-[120px]">{resumeFile.name}</p>
-                                <p className="text-[10px] text-gray-400 uppercase font-bold">PDF Document</p>
-                            </div>
-                        </div>
-                        <button onClick={handleRemoveResume} className="p-2 hover:bg-red-50 text-red-400 rounded-full transition-colors"><X size={16}/></button>
-                    </div>
-                  )}
-                  <input type="file" ref={fileInputRef} className="hidden" accept=".pdf" onChange={handleFileUpload} />
+      {/* Information Grid based on Database Columns */}
+      <div className="grid md:grid-cols-2 gap-y-10 gap-x-12 mb-12 pb-12 border-b border-gray-100">
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Email Address</p>
+          <p className="text-base font-bold text-gray-800">{profile?.email || "N/A"}</p>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Birthday</p>
+          <p className="text-base font-bold text-gray-800">
+            {profile?.bday_month && profile?.bday_day && profile?.bday_year 
+              ? `${profile.bday_month} ${profile.bday_day}, ${profile.bday_year}` 
+              : "Not provided"}
+          </p>
+        </div>
+
+        <div className="space-y-2 md:col-span-2">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Home Address</p>
+          <p className="text-base font-bold text-gray-800 leading-relaxed">{profile?.address || "No address on file"}</p>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">ID Type</p>
+          <p className="text-base font-bold text-gray-800">{profile?.id_type || "Government ID"}</p>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">ID Number (QC ID)</p>
+          <p className="text-base font-bold text-gray-800 font-mono">{profile?.qc_id || "None"}</p>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Education</p>
+          <p className="text-base font-bold text-gray-800">{profile?.educational_attainment || "Not Specified"}</p>
+        </div>
+      </div>
+      
+      {/* Resume Tools Grid */}
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Resume Builder */}
+        <button 
+          onClick={() => onNavigate('resume-builder')} 
+          className="p-10 border-2 border-cyan-100 rounded-[2.5rem] hover:bg-cyan-50 transition-all text-left group"
+        >
+          <div className="bg-cyan-100 text-cyan-600 w-12 h-12 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+            <FilePlus size={24}/>
+          </div>
+          <h4 className="font-black text-xl mb-2 text-gray-900">Resume Builder</h4>
+          <p className="text-xs text-gray-500 font-medium leading-relaxed">Create an optimized resume.</p>
+        </button>
+
+        {/* Resume Upload Module */}
+        <div className="p-10 border-2 border-dashed border-gray-200 rounded-[2.5rem] hover:bg-gray-50 transition-all text-left">
+          <div className="bg-gray-100 text-gray-400 w-12 h-12 rounded-2xl flex items-center justify-center mb-6">
+            <Upload size={24}/>
+          </div>
+          <h4 className="font-black text-xl mb-2 text-gray-900">Upload Resume</h4>
+          
+          {!resumeFile ? (
+            <>
+              <p className="text-xs text-gray-500 font-medium mb-6">Already have a file? Upload PDF.</p>
+              <button 
+                onClick={() => fileInputRef.current.click()} 
+                className="text-xs font-black text-cyan-600 uppercase tracking-widest hover:underline"
+              >
+                Select File
+              </button>
+            </>
+          ) : (
+            <div className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between shadow-sm animate-in zoom-in">
+              <div className="flex items-center gap-3">
+                <FileCheck className="text-green-500" size={20}/>
+                <div className="overflow-hidden">
+                  <p className="text-xs font-black text-gray-800 truncate max-w-[120px]">
+                    {resumeFile instanceof File ? resumeFile.name : (resumeFile.original_name || "Resume.pdf")}
+                  </p>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold">PDF Document</p>
                 </div>
               </div>
+              <button 
+                onClick={handleRemoveResume} 
+                className="p-2 hover:bg-red-50 text-red-400 rounded-full transition-colors"
+              >
+                <X size={16}/>
+              </button>
             </div>
-          </div>
-        )}
-
+          )}
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept=".pdf" 
+            onChange={handleFileUpload} 
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+)}
         {/* Withdrawal Modal for Trainings & Job Fairs */}
         {withdrawModal.isOpen && (
           <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl">
-              <h3 className="text-2xl font-black mb-2">Confirm Withdrawal</h3>
+              <h3 className="text-2xl font-black mb-4">Confirm Withdrawal</h3>
               <p className="text-sm text-gray-600 mb-6">
                 You are about to withdraw from <span className="font-bold">{withdrawModal.title}</span>. This will free up your slot for others.
               </p>
@@ -675,7 +821,7 @@ const handleRemoveResume = async () => {
               </div>
               <div className="flex gap-4">
                 <button
-                  onClick={() => setWithdrawModal({ isOpen: false, type: null, id: null, title: '' })}
+                  onClick={closeWithdrawModal}
                   className="flex-1 py-3 text-sm font-bold text-gray-600 uppercase tracking-widest border border-gray-200 rounded-2xl hover:bg-gray-50 transition-colors"
                 >
                   Cancel
