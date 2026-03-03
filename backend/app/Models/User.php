@@ -37,6 +37,10 @@ class User extends Authenticatable
         'resume_text',
         'parsed_skill',
         'educational_attainment',
+        'industry',    // Allows Industry to be saved during registration
+        'address',     // Allows Business Address to be saved during registration
+        'contact_number',   // ADDED: Fixes the issue where contact number doesn't save
+        'company_website',  // ADDED: Fixes the issue where company website doesn't save
     ];
 
     /**
