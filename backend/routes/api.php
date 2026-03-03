@@ -23,6 +23,7 @@ Route::delete('/jobs/{id}', [FeatureController::class, 'deleteJob']); // Bonus: 
 
 // --- Application Routes ---
 Route::get('/seeker/profile', [FeatureController::class, 'seekerProfile']);
+Route::get('/seeker/recommendations', [FeatureController::class, 'seekerRecommendations']);
 Route::post('/applications/apply', [FeatureController::class, 'applyJob']);
 Route::patch('/applications/withdraw', [FeatureController::class, 'withdrawApplication']);
 Route::get('/applications/seeker', [FeatureController::class, 'seekerApplications']);

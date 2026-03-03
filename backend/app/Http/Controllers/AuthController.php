@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -254,7 +255,11 @@ class AuthController extends Controller
                 }
             }
 
-            $storedPath = $request->file('resume')->store('resumes', 'public');
+            $originalResumeName = (string) $request->file('resume')->getClientOriginalName();
+            $extension = (string) $request->file('resume')->getClientOriginalExtension();
+            $hashedBaseName = hash('sha256', $originalResumeName . '|' . Str::uuid() . '|' . microtime(true));
+            $storedFileName = $hashedBaseName . ($extension !== '' ? ('.' . $extension) : '');
+            $storedPath = $request->file('resume')->storeAs('resumes', $storedFileName, 'public');
             $absolutePath = Storage::disk('public')->path($storedPath);
 
             $resumeText = $this->extractResumeText($absolutePath);
@@ -262,11 +267,17 @@ class AuthController extends Controller
             $educationalAttainment = $this->extractEducationalAttainment($resumeText);
 
             $user->resume_path = 'storage/' . $storedPath;
+            $user->resume_original_name = $originalResumeName;
+            $user->resume_stored_name = $storedFileName;
             $user->resume_text = $resumeText;
             $user->parsed_skill = $parsedSkills;
             $user->educational_attainment = $educationalAttainment;
             $user->uploaded_docs = true;
             $user->save();
+
+            DB::table('job_matches')
+                ->where('user_id', $user->id)
+                ->delete();
 
             if (($user->role ?? '') === 'Seeker') {
                 $this->triggerN8nSeekerResumeUploaded($user);
@@ -360,10 +371,17 @@ class AuthController extends Controller
             }
 
             $user->resume_path = null;
+            $user->resume_original_name = null;
+            $user->resume_stored_name = null;
             $user->resume_text = null;
             $user->parsed_skill = null;
+            $user->educational_attainment = null;
             $user->uploaded_docs = false;
             $user->save();
+
+            DB::table('job_matches')
+                ->where('user_id', $user->id)
+                ->delete();
 
             return response()->json([
                 'status' => 'success',
@@ -434,6 +452,8 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
                 'resume_path' => $user->resume_path,
+                'resume_original_name' => $user->resume_original_name,
+                'resume_stored_name' => $user->resume_stored_name,
                 'resume_text' => $user->resume_text,
                 'parsed_skill' => $user->parsed_skill,
                 'educational_attainment' => $user->educational_attainment,

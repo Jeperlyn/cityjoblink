@@ -133,6 +133,13 @@ const mapBackendEmployerApplication = (app) => ({
     matchedSkills: app.matched_skills || [],
     missingSkills: app.missing_skills || [],
     educationMatch: app.education_match,
+    matchReasons: app.match_reasons || '',
+});
+
+const mapBackendRecommendation = (item) => ({
+    job: mapBackendJob(item),
+    matchScore: Number(item.match_score ?? 0),
+    matchReasons: item.match_reasons || '',
 });
 
 const MessagesPanel = ({ messages, user, users, onBack, onSendMessage, onRead, initialChatId }) => {
@@ -250,6 +257,7 @@ const App = () => {
     const [trainings, setTrainings] = useState(INITIAL_TRAININGS);
     const [jobFairs, setJobFairs] = useState(() => JSON.parse(localStorage.getItem('cjl_jobfairs')) || INITIAL_JOB_FAIRS); 
     const [notifications, setNotifications] = useState(() => JSON.parse(localStorage.getItem('cjl_notifications')) || INITIAL_NOTIFICATIONS);
+    const [seekerRecommendations, setSeekerRecommendations] = useState([]);
     const [selectedJob, setSelectedJob] = useState(null);
     const [selectedJobMatchData, setSelectedJobMatchData] = useState(null);
     const [targetChatId, setTargetChatId] = useState(null);
@@ -338,6 +346,17 @@ const App = () => {
         const withdrawn = (data.withdrawn_applications || []).map((app) => mapBackendApplication(app, seekerId));
 
         return [...active, ...withdrawn];
+    };
+
+    const fetchSeekerRecommendations = async (email, minScore = 50) => {
+        const response = await fetch(`${API_BASE}/seeker/recommendations?email=${encodeURIComponent(email)}&min_score=${minScore}`, {
+            headers: { Accept: 'application/json' },
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') throw new Error(data?.message || 'Failed loading recommendations');
+
+        return (data.recommendations || []).map(mapBackendRecommendation);
     };
 
     const fetchEmployerApplications = async (email) => {
@@ -433,12 +452,13 @@ const App = () => {
 
         const bootstrap = async () => {
             try {
-                const [profileData, jobsData, trainingsData, applicationsData, notificationsData] = await Promise.all([
+                const [profileData, jobsData, trainingsData, applicationsData, notificationsData, recommendationsData] = await Promise.all([
                     fetchSeekerProfile(user.email),
                     fetchJobs(),
                     fetchTrainings(),
                     fetchApplications(user.email, user.id),
                     fetchNotifications(user.email),
+                    fetchSeekerRecommendations(user.email, 50),
                 ]);
 
                 setUser(profileData);
@@ -447,6 +467,7 @@ const App = () => {
                 setTrainings(trainingsData);
                 setApplications(applicationsData);
                 setNotifications(notificationsData);
+                setSeekerRecommendations(recommendationsData);
             } catch (error) {
                 console.error('Seeker bootstrap failed:', error);
             }
@@ -938,7 +959,7 @@ const App = () => {
         if (currentView === 'employer-dash') return <EmployerDashboard profile={user} jobs={jobs} applications={applications} seekers={employerSeekers} onPostJob={handlePostJob} onUpdateJob={handleUpdateJob} onUpdateStatus={handleUpdateAppStatus} onUpdateProfile={(u)=>setUser(normalizeUserProfile(u))} onUploadDocs={handleUploadEmployerDocs} onOpenChat={(id)=>{setTargetChatId(id); setCurrentView('messages');}} />;
         
         if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} onVerifyEmployer={handleVerifyEmployer} jobFairs={jobFairs} onAddJobFair={()=>{}} />;
-        if (currentView === 'matchmaker') return <FindJobs jobs={jobs} onApply={handleApply} applications={applications} userId={user.id} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} />;
+        if (currentView === 'matchmaker') return <FindJobs jobs={jobs} recommendations={seekerRecommendations || []} onApply={handleApply} applications={applications} userId={user.id} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} />;
         if (currentView === 'job-details') {
             const matchInfo = selectedJobMatchData || calculateMatchScore(selectedJob?.requiredSkills || [], user?.skills || []);
             return (

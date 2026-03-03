@@ -13,20 +13,17 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
 
     const [newJob, setNewJob] = useState({ title: '', salaryMin: '', salaryMax: '', location: '', type: 'Full-time', requiredSkills: '', educationalAttainmentRequired: '', description: '' });
 
-    // ✅ NEW STATE: Idinagdag para sa error handling kapag nagpo-post ng Job
     const [jobPostError, setJobPostError] = useState(null);
 
-    // ✅ STATE LOCATOR INTEGRATION: Para sa auto-scroll at highlight
     const [targetApplicantId, setTargetApplicantId] = useState(null);
     const applicantRefs = useRef({});
 
-    // ✅ FIX: Mapping both 'address' (DB) and 'companyAddress' (Legacy) to prevent empty fields
     const [editProfileData, setEditProfileData] = useState({
         companyName: profile?.companyName || profile?.company_name || '',
         industry: profile?.industry || '',
-        companyAddress: profile?.address || profile?.companyAddress || '',
-        contactNumber: profile?.contact_number || profile?.contactNumber || '',
-        companyWebsite: profile?.company_website || profile?.companyWebsite || ''
+        companyAddress: profile?.companyAddress || profile?.company_address || profile?.address || '',
+        contactNumber: profile?.contactNumber || profile?.contact_number || '',
+        companyWebsite: profile?.companyWebsite || profile?.company_website || ''
     });
 
     const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -44,14 +41,13 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
             setEditProfileData({
                 companyName: profile.companyName || profile.company_name || '',
                 industry: profile.industry || '',
-                companyAddress: profile.address || profile.companyAddress || '',
-                contactNumber: profile.contact_number || profile.contactNumber || '',
-                companyWebsite: profile.company_website || profile.companyWebsite || ''
+                companyAddress: profile.companyAddress || profile.company_address || profile.address || '',
+                contactNumber: profile.contactNumber || profile.contact_number || '',
+                companyWebsite: profile.companyWebsite || profile.company_website || ''
             });
         }
     }, [profile]);
 
-    // ✅ USEEFFECT SCROLL LOGIC: Awtomatikong mag-scroll kapag may target applicant
     useEffect(() => {
         if (targetApplicantId && activeTab === 'jobs') {
             const timer = setTimeout(() => {
@@ -59,7 +55,6 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                 if (element) {
                     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
-                // I-clear ang target pagkatapos ng highlight period (3 seconds)
                 const clearTimer = setTimeout(() => setTargetApplicantId(null), 3000);
                 return () => clearTimeout(clearTimer);
             }, 500);
@@ -72,7 +67,6 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
         return jobs.filter(j => String(j.employerId) === String(profile.id));
     }, [jobs, profile?.id]);
 
-    // ✅ RECENT ACTIVITY LOGIC: Kinukuha ang huling 5 applications
     const recentActivities = useMemo(() => {
         if (!applications) return [];
         return [...applications]
@@ -92,7 +86,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                 const fitPass = Number(app.fitScore ?? 0) >= minFit;
                 return statusPass && fitPass;
             })
-            .sort((a, b) => (Number(b.fitScore) || 0) - (Number(a.fitScore) || 0)); // Sorting logic
+            .sort((a, b) => (Number(b.fitScore) || 0) - (Number(a.fitScore) || 0));
     };
 
     const jobsToDisplay = useMemo(() => {
@@ -103,28 +97,78 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
         return myJobs.filter(j => getSortedApplicants(j.id).length > 0);
     }, [myJobs, applicantStatusFilter, minFitScoreFilter, applications]);
 
-    // ✅ SHORTCUT FUNCTION: Para sa Target Icon
     const locateApplicant = (jobId, appId) => {
         setExpandedJob(jobId);
         setTargetApplicantId(appId);
         setActiveTab('jobs');
     };
 
+    // --- UPDATED SAVE LOGIC ---
     const handleSaveProfile = async () => {
         if (!editProfileData.industry || !editProfileData.companyAddress) {
             alert("Address and Industry are required to complete your profile.");
             return;
         }
-        if (typeof onUpdateProfile === 'function') {
-            const ok = await onUpdateProfile(editProfileData);
-            if (ok) {
+
+        try {
+            const payload = {
+                email: profile.email,
+                companyName: editProfileData.companyName,
+                companyAddress: editProfileData.companyAddress,
+                industry: editProfileData.industry,
+                contactNumber: editProfileData.contactNumber,
+                companyWebsite: editProfileData.companyWebsite
+            };
+
+            const response = await fetch('http://localhost:8000/api/employer/update-profile', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                // Ensure the previous properties from `profile` (e.g., name, role, email) remain.
+                // Reconstruct with standardized property names to fix empty rendering issue.
+                const updatedUser = {
+                    ...profile,          // Keep old fields (id, name, role)
+                    ...data.user,         // Apply backend updates
+                    companyName: editProfileData.companyName,
+                    companyAddress: editProfileData.companyAddress,
+                    address: editProfileData.companyAddress,      // Fallback
+                    company_address: editProfileData.companyAddress, // Fallback
+                    industry: editProfileData.industry,
+                    contactNumber: editProfileData.contactNumber,
+                    contact_number: editProfileData.contactNumber, // Fallback
+                    companyWebsite: editProfileData.companyWebsite,
+                    company_website: editProfileData.companyWebsite // Fallback
+                };
+
+                // 1. Update LocalStorage immediately
+                localStorage.setItem('user', JSON.stringify(updatedUser));
+
+                // 2. Update React State via the passed prop
+                if (typeof onUpdateProfile === 'function') {
+                    onUpdateProfile(updatedUser);
+                }
+
                 setActiveTab('overview');
+                alert("Profile updated successfully!");
+            } else {
+                alert(data.message || "Failed to update profile.");
             }
+        } catch (error) {
+            console.error("Error saving profile:", error);
+            alert("Network error while trying to save profile.");
         }
     };
 
     const handlePostJob = () => {
-        setJobPostError(null); 
+        setJobPostError(null);
 
         if (!newJob.title || newJob.title.trim().length < 5) {
             return setJobPostError("Job Title must be at least 5 characters long.");
@@ -145,7 +189,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
         }
 
         if (newJob.requiredSkills) {
-            const skillsRegex = /^[a-zA-Z0-9\s,#+\-\.]+$/; 
+            const skillsRegex = /^[a-zA-Z0-9\s,#+\-\.]+$/;
             if (!skillsRegex.test(newJob.requiredSkills)) {
                 return setJobPostError("Required Skills contains invalid special characters. Use commas to separate.");
             }
@@ -199,11 +243,10 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
             requiredSkills: formattedSkills
         });
         setEditingJob(job);
-        setJobPostError(null); 
+        setJobPostError(null);
         setActiveTab('post_job');
     };
 
-    // ✅ ADDED: handleFileChange para sa verification upload
     const handleFileChange = (e) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -221,16 +264,15 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
     const salaryOptions = Array.from({ length: 99 }, (_, index) => (index + 2) * 5000);
     const statusFilterOptions = ['All', 'Pending', 'Viewing', 'Interview', 'Hired', 'Rejected', 'Withdrawn'];
 
-    const isProfileInfoComplete = profile?.industry && (profile?.address || profile?.companyAddress);
+    const isProfileInfoComplete = profile?.industry && (profile?.address || profile?.companyAddress || profile?.company_address);
 
     return (
         <div className="flex min-h-screen bg-gray-50">
-
             {/* SIDEBAR NAVIGATION */}
             <div className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full">
                 <div className="p-6 border-b">
                     <h1 className="text-xl font-bold text-blue-600 flex items-center gap-2">
-                        <Building2 size={24} /> CityJobLink
+                        <Building2 size={24} /> Employer Portal
                     </h1>
                 </div>
 
@@ -261,7 +303,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                 {activeTab === 'overview' && (
                     <div className="space-y-6">
                         <div className="flex justify-between items-center">
-                            <h2 className="text-2xl font-bold text-gray-900">Welcome, {profile?.companyName || profile?.company_name || 'Employer'}!</h2>
+                            <h2 className="text-2xl font-bold text-gray-900">Welcome, {profile?.name || profile?.companyName || profile?.company_name || 'Employer'}!</h2>
                             <button onClick={() => { setActiveTab('post_job'); setJobPostError(null); }} className="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold shadow-md hover:bg-blue-700 flex items-center gap-2">
                                 <Edit3 size={18} /> Post a New Job
                             </button>
@@ -304,8 +346,8 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                             Please upload your business permit or relevant documents to verify your account and enable job postings.
                                         </p>
                                         <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} accept=".pdf,.jpg,.png,.doc,.docx" />
-                                        <div 
-                                            className={`border-2 border-dashed p-10 rounded-2xl cursor-pointer hover:bg-orange-100 transition-all flex flex-col items-center justify-center gap-3 mb-4 ${uploadedFileName ? 'bg-orange-100 border-orange-400' : 'border-orange-300'}`} 
+                                        <div
+                                            className={`border-2 border-dashed p-10 rounded-2xl cursor-pointer hover:bg-orange-100 transition-all flex flex-col items-center justify-center gap-3 mb-4 ${uploadedFileName ? 'bg-orange-100 border-orange-400' : 'border-orange-300'}`}
                                             onClick={() => fileInputRef.current.click()}
                                         >
                                             {uploadedFileName ? (
@@ -359,7 +401,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                     <span className="text-[10px] font-bold px-2 py-1 rounded bg-gray-100 text-gray-600 uppercase">
                                                         {activity.date}
                                                     </span>
-                                                    <button 
+                                                    <button
                                                         onClick={() => locateApplicant(activity.jobId, activity.id)}
                                                         className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                                                         title="Locate Applicant"
@@ -501,13 +543,13 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                     const s = seekers.find(u => String(u.id) === String(app.seekerId));
                                                     const isWithdrawn = app.status === 'Cancelled' || app.status === 'Withdrawn';
                                                     const isHighMatch = Number(app.fitScore ?? 0) >= 80;
-                                                    
+
                                                     // ✅ TARGET HIGHLIGHT CHECK
                                                     const isTargeted = String(targetApplicantId) === String(app.id);
 
                                                     return (
-                                                        <div 
-                                                            key={app.id} 
+                                                        <div
+                                                            key={app.id}
                                                             ref={el => applicantRefs.current[app.id] = el}
                                                             className={`flex items-center justify-between p-4 rounded-xl border transition-all duration-500 ${isTargeted ? 'ring-2 ring-blue-500 scale-[1.02] bg-blue-50 shadow-sm' : 'bg-white'} ${isHighMatch && !isWithdrawn && !isTargeted ? 'border-l-4 border-l-emerald-500 bg-emerald-50/20' : ''} ${isWithdrawn ? 'bg-gray-50 opacity-60 grayscale' : 'shadow-sm hover:shadow-md'}`}
                                                         >
@@ -530,13 +572,16 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                                     <div className="w-16 h-1.5 bg-gray-100 rounded-full mt-1 overflow-hidden">
                                                                         <div className={`h-full ${isHighMatch && !isWithdrawn ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${app.fitScore}%` }}></div>
                                                                     </div>
+                                                                    {app.matchReasons && (
+                                                                        <p className="text-[10px] text-gray-500 mt-1 max-w-[180px] truncate" title={app.matchReasons}>{app.matchReasons}</p>
+                                                                    )}
                                                                 </div>
-                                                                
+
                                                                 {/* ✅ ADDED: Message Icon Button */}
-                                                                <button 
-                                                                    onClick={() => !isWithdrawn && s && onOpenChat(s.id)} 
+                                                                <button
+                                                                    onClick={() => !isWithdrawn && s && onOpenChat(s.id)}
                                                                     disabled={isWithdrawn}
-                                                                    title="Message Applicant" 
+                                                                    title="Message Applicant"
                                                                     className="p-2 border rounded-lg hover:bg-blue-50 bg-white text-blue-600 disabled:text-gray-400 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors flex items-center justify-center shadow-sm"
                                                                 >
                                                                     <MessageCircle size={16} />
@@ -705,7 +750,21 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                             </div>
                         </div>
                         <div className="p-6 flex justify-end gap-3 border-t bg-white">
-                            <button onClick={() => window.open(`http://localhost:8000/${viewApplicant.resume_path}`, '_blank')} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 shadow-md transition-all"><Download size={18} /> Download PDF</button>
+                            {viewApplicant.resume_path ? (
+                                <button
+                                    onClick={() => window.open(`http://localhost:8000/${viewApplicant.resume_path}`, '_blank')}
+                                    className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 shadow-md transition-all"
+                                >
+                                    <Download size={18} /> Download PDF
+                                </button>
+                            ) : (
+                                <button
+                                    disabled
+                                    className="bg-gray-300 text-gray-500 px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 cursor-not-allowed"
+                                >
+                                    <AlertCircle size={18} /> No Resume Available
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

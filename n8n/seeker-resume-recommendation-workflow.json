@@ -39,7 +39,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const webhookItem = $('Webhook1').first()?.json ?? {};\nconst payload = webhookItem.body ?? webhookItem;\nconst event = String(payload?.event || '').toLowerCase();\n\nif (event !== 'seeker_resume_uploaded') {\n  return [];\n}\n\nconst seekerEmail = String(payload.email || '').trim();\nif (!seekerEmail) {\n  throw new Error('Missing seeker email in payload');\n}\n\nconst seekerName = String(payload.name || 'Jobseeker').trim();\nconst resumeText = String(payload.resume_text || '').toLowerCase();\nconst seekerEducation = String(payload.educational_attainment || '').toLowerCase();\n\nlet seekerSkills = payload.parsed_skill ?? [];\nif (typeof seekerSkills === 'string') {\n  try {\n    seekerSkills = JSON.parse(seekerSkills);\n  } catch {\n    seekerSkills = [seekerSkills];\n  }\n}\nif (!Array.isArray(seekerSkills) && typeof seekerSkills === 'object' && seekerSkills !== null) {\n  seekerSkills = Object.values(seekerSkills);\n}\nseekerSkills = seekerSkills.map((s) => String(s).toLowerCase().trim()).filter(Boolean);\n\nconst jobs = $input.all().map((item) => item.json);\nconst scored = [];\n\nconst eduMap = {\n  doctorate: ['phd', 'doctorate', 'doctor of'],\n  masters: ['master', 'ms', 'ma', 'mba'],\n  bachelors: ['bachelor', 'bs', 'ba', 'college', 'degree'],\n  vocational: ['vocational', 'tesda', 'certificate'],\n  highschool: ['high school', 'secondary']\n};\n\nfor (const job of jobs) {\n  const title = String(job.title || '');\n  const company = String(job.company || '');\n  const location = String(job.location || '');\n  const description = String(job.description || '').toLowerCase();\n  const requiredEducation = String(job.educational_attainment_required || '').toLowerCase();\n\n  let requiredSkills = job.required_skills ?? [];\n  if (typeof requiredSkills === 'string') {\n    try {\n      requiredSkills = JSON.parse(requiredSkills);\n    } catch {\n      requiredSkills = [requiredSkills];\n    }\n  }\n  if (!Array.isArray(requiredSkills) && typeof requiredSkills === 'object' && requiredSkills !== null) {\n    requiredSkills = Object.values(requiredSkills);\n  }\n  requiredSkills = requiredSkills.map((s) => String(s).toLowerCase().trim()).filter(Boolean);\n\n  let score = 0;\n  const reasons = [];\n\n  let skillHits = 0;\n  for (const skill of requiredSkills) {\n    if (seekerSkills.includes(skill) || resumeText.includes(skill)) {\n      skillHits++;\n    }\n  }\n  if (requiredSkills.length > 0) {\n    const skillScore = (skillHits / requiredSkills.length) * 60;\n    score += skillScore;\n    if (skillHits > 0) reasons.push(`${skillHits}/${requiredSkills.length} required skills matched`);\n  }\n\n  const titleKeywords = title.toLowerCase().split(/\\s+/).filter((w) => w.length > 3);\n  const titleHits = titleKeywords.filter((k) => resumeText.includes(k)).length;\n  if (titleKeywords.length > 0) {\n    const titleScore = (titleHits / titleKeywords.length) * 25;\n    score += titleScore;\n    if (titleHits > 0) reasons.push(`title alignment (${titleHits} keyword hit/s)`);\n  }\n\n  if (requiredEducation && requiredEducation !== 'any') {\n    const eduMatched = seekerEducation.includes(requiredEducation) || resumeText.includes(requiredEducation) || Object.values(eduMap).some((keys) => keys.some((k) => requiredEducation.includes(k) && (seekerEducation.includes(k) || resumeText.includes(k))));\n    if (eduMatched) {\n      score += 15;\n      reasons.push('education aligned');\n    }\n  } else {\n    score += 10;\n  }\n\n  const finalScore = Math.round(Math.min(score, 100));\n  if (finalScore > 0) {\n    scored.push({\n      job_id: job.id,\n      title,\n      company,\n      location,\n      score: finalScore,\n      reasons: reasons.join(' | ') || 'General profile fit'\n    });\n  }\n}\n\nscored.sort((a, b) => b.score - a.score);\nconst top = scored.slice(0, 5);\n\nreturn [{\n  json: {\n    event: 'seeker_resume_uploaded',\n    to_email: seekerEmail,\n    seeker_name: seekerName,\n    recommendations: top\n  }\n}];"
+        "jsCode": "const webhookItem = $('Webhook1').first()?.json ?? {};\nconst payload = webhookItem.body ?? webhookItem;\nconst event = String(payload?.event || '').toLowerCase();\n\nif (event !== 'seeker_resume_uploaded') {\n  return [];\n}\n\nconst MIN_RECOMMENDATION_SCORE = 50;\n\nconst seekerEmail = String(payload.email || '').trim();\nif (!seekerEmail) {\n  throw new Error('Missing seeker email in payload');\n}\n\nconst seekerUserId = Number(payload.user_id || 0);\nif (!Number.isFinite(seekerUserId) || seekerUserId <= 0) {\n  throw new Error('Missing or invalid user_id in payload');\n}\n\nconst seekerName = String(payload.name || 'Jobseeker').trim();\nconst resumeText = String(payload.resume_text || '').toLowerCase();\nconst seekerEducation = String(payload.educational_attainment || '').toLowerCase();\n\nlet seekerSkills = payload.parsed_skill ?? [];\nif (typeof seekerSkills === 'string') {\n  try {\n    seekerSkills = JSON.parse(seekerSkills);\n  } catch {\n    seekerSkills = [seekerSkills];\n  }\n}\nif (!Array.isArray(seekerSkills) && typeof seekerSkills === 'object' && seekerSkills !== null) {\n  seekerSkills = Object.values(seekerSkills);\n}\nseekerSkills = seekerSkills.map((s) => String(s).toLowerCase().trim()).filter(Boolean);\n\nconst jobs = $input.all().map((item) => item.json);\nconst scored = [];\n\nconst eduMap = {\n  doctorate: ['phd', 'doctorate', 'doctor of'],\n  masters: ['master', 'ms', 'ma', 'mba'],\n  bachelors: ['bachelor', 'bs', 'ba', 'college', 'degree'],\n  vocational: ['vocational', 'tesda', 'certificate'],\n  highschool: ['high school', 'secondary']\n};\n\nfor (const job of jobs) {\n  const title = String(job.title || '');\n  const company = String(job.company || '');\n  const location = String(job.location || '');\n  const description = String(job.description || '').toLowerCase();\n  const requiredEducation = String(job.educational_attainment_required || '').toLowerCase();\n\n  let requiredSkills = job.required_skills ?? [];\n  if (typeof requiredSkills === 'string') {\n    try {\n      requiredSkills = JSON.parse(requiredSkills);\n    } catch {\n      requiredSkills = [requiredSkills];\n    }\n  }\n  if (!Array.isArray(requiredSkills) && typeof requiredSkills === 'object' && requiredSkills !== null) {\n    requiredSkills = Object.values(requiredSkills);\n  }\n  requiredSkills = requiredSkills.map((s) => String(s).toLowerCase().trim()).filter(Boolean);\n\n  let score = 0;\n  const reasons = [];\n\n  let skillHits = 0;\n  for (const skill of requiredSkills) {\n    if (seekerSkills.includes(skill) || resumeText.includes(skill)) {\n      skillHits++;\n    }\n  }\n  if (requiredSkills.length > 0) {\n    const skillScore = (skillHits / requiredSkills.length) * 60;\n    score += skillScore;\n    if (skillHits > 0) reasons.push(`${skillHits}/${requiredSkills.length} required skills matched`);\n  }\n\n  const titleKeywords = title.toLowerCase().split(/\\s+/).filter((w) => w.length > 3);\n  const titleHits = titleKeywords.filter((k) => resumeText.includes(k)).length;\n  if (titleKeywords.length > 0) {\n    const titleScore = (titleHits / titleKeywords.length) * 25;\n    score += titleScore;\n    if (titleHits > 0) reasons.push(`title alignment (${titleHits} keyword hit/s)`);\n  }\n\n  if (requiredEducation && requiredEducation !== 'any') {\n    const eduMatched = seekerEducation.includes(requiredEducation) || resumeText.includes(requiredEducation) || Object.values(eduMap).some((keys) => keys.some((k) => requiredEducation.includes(k) && (seekerEducation.includes(k) || resumeText.includes(k))));\n    if (eduMatched) {\n      score += 15;\n      reasons.push('education aligned');\n    }\n  } else {\n    score += 10;\n  }\n\n  const finalScore = Math.round(Math.min(score, 100));\n  if (finalScore >= MIN_RECOMMENDATION_SCORE) {\n    scored.push({\n      job_id: job.id,\n      title,\n      company,\n      location,\n      score: finalScore,\n      reasons: reasons.join(' | ') || 'General profile fit'\n    });\n  }\n}\n\nscored.sort((a, b) => b.score - a.score);\nconst top = scored.slice(0, 5);\n\nif (top.length === 0) {\n  return [];\n}\n\nreturn [{\n  json: {\n    event: 'seeker_resume_uploaded',\n    seeker_user_id: seekerUserId,\n    to_email: seekerEmail,\n    seeker_name: seekerName,\n    recommendations: top,\n    all_matches: scored\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -49,6 +49,98 @@
       ],
       "id": "9a3ef532-8aa8-4e14-9f03-333333333333",
       "name": "Score Jobs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $json;\nconst seekerUserId = Number(payload.seeker_user_id || 0);\nif (!Number.isFinite(seekerUserId) || seekerUserId <= 0) {\n  return [];\n}\n\nconst matches = Array.isArray(payload.all_matches) ? payload.all_matches : [];\n\nreturn matches.map((match) => ({\n  json: {\n    job_id: Number(match.job_id),\n    user_id: seekerUserId,\n    match_score: Number(match.score || 0),\n    match_reasons: String(match.reasons || '')\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        280
+      ],
+      "id": "5e9e4f3b-ef0f-4b8a-8f18-555555555555",
+      "name": "Prepare Match Rows"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "job_matches",
+          "mode": "list",
+          "cachedResultName": "job_matches"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "job_id": "={{ Number($json.job_id) }}",
+            "user_id": "={{ Number($json.user_id) }}",
+            "match_score": "={{ Number($json.match_score) }}",
+            "match_reasons": "={{ $json.match_reasons }}"
+          },
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_id",
+              "displayName": "user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "match_score",
+              "displayName": "match_score",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "match_reasons",
+              "displayName": "match_reasons",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": true,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1240,
+        280
+      ],
+      "id": "68f7d9cd-2a1b-4f4a-bfd0-666666666666",
+      "name": "Store Matches",
+      "credentials": {
+        "postgres": {
+          "id": "3t9IN3420wnFrcDg",
+          "name": "Postgres account"
+        }
+      }
     },
     {
       "parameters": {
@@ -67,6 +159,7 @@
       ],
       "id": "4f0a0ad9-3bba-4f00-a9dd-444444444444",
       "name": "Send Recommendation Email",
+      "continueOnFail": true,
       "credentials": {
         "smtp": {
           "id": "fJ6zTRRaEJz5Zvw9",
@@ -103,7 +196,23 @@
       "main": [
         [
           {
+            "node": "Prepare Match Rows",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "Send Recommendation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Match Rows": {
+      "main": [
+        [
+          {
+            "node": "Store Matches",
             "type": "main",
             "index": 0
           }

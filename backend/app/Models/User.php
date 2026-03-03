@@ -34,9 +34,15 @@ class User extends Authenticatable
         'uploaded_docs',
         'verification_doc_path',
         'resume_path',
+        'resume_original_name',
+        'resume_stored_name',
         'resume_text',
         'parsed_skill',
         'educational_attainment',
+        'industry',
+        'address',
+        'contact_number',
+        'company_website',
     ];
 
     /**

@@ -370,10 +370,15 @@ class FeatureController extends Controller
             'updated_at' => now(),
         ]);
 
+        $updatedJob = DB::table('jobs_catalog')->where('id', $id)->first();
+        if ($updatedJob) {
+            $this->triggerN8nJobMatch($updatedJob);
+        }
+
         return response()->json([
             'status' => 'success',
             'message' => 'Job updated successfully.',
-            'job' => DB::table('jobs_catalog')->where('id', $id)->first(),
+            'job' => $updatedJob,
         ]);
     }
 
@@ -599,6 +604,11 @@ class FeatureController extends Controller
         }
 
         $metrics = $this->calculateMatchMetricsForJobAndSeeker($job, $user);
+        $n8nMatch = $this->getLatestN8nMatch((int) $job->id, (int) $user->id);
+
+        if ($n8nMatch) {
+            $metrics['score'] = (int) $n8nMatch->match_score;
+        }
 
         return response()->json([
             'status' => 'success',
@@ -610,6 +620,61 @@ class FeatureController extends Controller
             'education_match' => $metrics['education_match'],
             'job_required_education' => $metrics['job_required_education'],
             'user_education' => $metrics['user_education'],
+            'match_reasons' => $n8nMatch?->match_reasons,
+        ]);
+    }
+
+    public function seekerRecommendations(Request $request)
+    {
+        $request->validate([
+            'email' => ['required', 'email'],
+            'min_score' => ['nullable', 'integer', 'min:0', 'max:100'],
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+        if (!$user || ($user->role ?? '') !== 'Seeker') {
+            return response()->json(['status' => 'error', 'message' => 'Seeker not found.'], 404);
+        }
+
+        $minScore = (int) ($request->input('min_score', 50));
+
+        $latestMatches = DB::table('job_matches as jm')
+            ->select('jm.job_id', 'jm.user_id', DB::raw('MAX(jm.id) as latest_id'))
+            ->where('jm.user_id', $user->id)
+            ->groupBy('jm.job_id', 'jm.user_id');
+
+        $recommendations = DB::table('jobs_catalog as j')
+            ->joinSub($latestMatches, 'latest', function ($join) {
+                $join->on('latest.job_id', '=', 'j.id');
+            })
+            ->join('job_matches as jm', 'jm.id', '=', 'latest.latest_id')
+            ->where('j.status', 'Open')
+            ->where('jm.match_score', '>=', $minScore)
+            ->orderByDesc('jm.match_score')
+            ->orderByDesc('j.created_at')
+            ->select([
+                'j.id',
+                'j.employer_id',
+                'j.title',
+                'j.company',
+                'j.location',
+                'j.salary_min',
+                'j.salary_max',
+                'j.employment_type',
+                'j.industry',
+                'j.description',
+                'j.required_skills',
+                'j.educational_attainment_required',
+                'j.status',
+                'j.created_at',
+                'jm.match_score',
+                'jm.match_reasons',
+            ])
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'recommendations' => $recommendations,
         ]);
     }
 
@@ -624,9 +689,18 @@ class FeatureController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Employer not found.'], 404);
         }
 
+        $latestMatches = DB::table('job_matches as jm')
+            ->select('jm.job_id', 'jm.user_id', DB::raw('MAX(jm.id) as latest_id'))
+            ->groupBy('jm.job_id', 'jm.user_id');
+
         $applications = DB::table('applications as a')
             ->join('jobs_catalog as j', 'j.id', '=', 'a.job_id')
             ->join('users as s', 's.id', '=', 'a.seeker_id')
+            ->leftJoinSub($latestMatches, 'latest', function ($join) {
+                $join->on('latest.job_id', '=', 'a.job_id')
+                    ->on('latest.user_id', '=', 'a.seeker_id');
+            })
+            ->leftJoin('job_matches as jm', 'jm.id', '=', 'latest.latest_id')
             ->where('j.employer_id', $employer->id)
             ->orderByDesc('a.created_at')
             ->select([
@@ -654,6 +728,8 @@ class FeatureController extends Controller
                 's.resume_text as seeker_resume_text',
                 's.parsed_skill as seeker_parsed_skill',
                 's.educational_attainment as seeker_educational_attainment',
+                'jm.match_score as n8n_match_score',
+                'jm.match_reasons as n8n_match_reasons',
             ])
             ->get()
             ->map(function ($item) {
@@ -669,10 +745,13 @@ class FeatureController extends Controller
 
                 $metrics = $this->calculateMatchMetricsForJobAndSeeker($job, $seeker);
 
-                $item->fit_score = $metrics['score'];
+                $item->fit_score = $item->n8n_match_score !== null
+                    ? (int) $item->n8n_match_score
+                    : $metrics['score'];
                 $item->matched_skills = $metrics['matched_skills'];
                 $item->missing_skills = $metrics['missing_skills'];
                 $item->education_match = $metrics['education_match'];
+                $item->match_reasons = $item->n8n_match_reasons;
 
                 return $item;
             })
@@ -916,6 +995,15 @@ class FeatureController extends Controller
             'job_required_education' => $jobRequiredEducation !== '' ? $jobRequiredEducation : null,
             'user_education' => $userEducation !== '' ? $userEducation : null,
         ];
+    }
+
+    private function getLatestN8nMatch(int $jobId, int $userId): ?object
+    {
+        return DB::table('job_matches')
+            ->where('job_id', $jobId)
+            ->where('user_id', $userId)
+            ->orderByDesc('id')
+            ->first(['match_score', 'match_reasons']);
     }
 
     private function toArraySkills(mixed $value): array
