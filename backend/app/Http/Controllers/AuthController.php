@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -152,7 +153,7 @@ class AuthController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Email is already registered. Please login instead.'], 409);
             }
 
-            User::create([
+            $user = User::create([
                 'name' => $pendingRegistration['name'],
                 'company_name' => $pendingRegistration['company_name'],
                 'qc_id' => $pendingRegistration['qc_id'],
@@ -172,11 +173,60 @@ class AuthController extends Controller
                 'address' => $pendingRegistration['address'] ?? null,
             ]);
 
+            if (($pendingRegistration['role'] ?? 'Seeker') === 'Seeker') {
+                $this->triggerN8nSeekerRegistered($user);
+            }
+
             Cache::forget($cacheKey);
 
             return response()->json(['status' => 'success', 'message' => 'Account verified successfully!']);
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    private function triggerN8nSeekerRegistered(User $user): void
+    {
+        $webhookUrl = config('services.n8n.seeker_webhook_url');
+
+        if (!$webhookUrl) {
+            return;
+        }
+
+        try {
+            $request = Http::timeout((int) config('services.n8n.timeout_seconds', 10));
+
+            $authUser = config('services.n8n.basic_auth_user');
+            $authPassword = config('services.n8n.basic_auth_password');
+
+            if ($authUser !== null && $authPassword !== null && $authUser !== '' && $authPassword !== '') {
+                $request = $request->withBasicAuth((string) $authUser, (string) $authPassword);
+            }
+
+            $response = $request->post($webhookUrl, [
+                'event' => 'seeker_registered',
+                'user_id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+                'parsed_skill' => $user->parsed_skill,
+                'educational_attainment' => $user->educational_attainment,
+                'is_qc_resident' => $user->is_qc_resident,
+            ]);
+
+            if ($response->successful()) {
+                Log::info("n8n seeker registration webhook success for user {$user->id}", [
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                ]);
+            } else {
+                Log::warning("n8n seeker registration webhook non-success for user {$user->id}", [
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                ]);
+            }
+        } catch (\Throwable $error) {
+            Log::error('n8n seeker registration webhook trigger failed: ' . $error->getMessage());
         }
     }
 
@@ -217,6 +267,10 @@ class AuthController extends Controller
             $user->educational_attainment = $educationalAttainment;
             $user->uploaded_docs = true;
             $user->save();
+
+            if (($user->role ?? '') === 'Seeker') {
+                $this->triggerN8nSeekerResumeUploaded($user);
+            }
 
             return response()->json([
                 'status' => 'success',
@@ -353,6 +407,53 @@ class AuthController extends Controller
         }
 
         return '';
+    }
+
+    private function triggerN8nSeekerResumeUploaded(User $user): void
+    {
+        $webhookUrl = config('services.n8n.seeker_resume_webhook_url');
+
+        if (!$webhookUrl) {
+            return;
+        }
+
+        try {
+            $request = Http::timeout((int) config('services.n8n.timeout_seconds', 10));
+
+            $authUser = config('services.n8n.basic_auth_user');
+            $authPassword = config('services.n8n.basic_auth_password');
+
+            if ($authUser !== null && $authPassword !== null && $authUser !== '' && $authPassword !== '') {
+                $request = $request->withBasicAuth((string) $authUser, (string) $authPassword);
+            }
+
+            $response = $request->post($webhookUrl, [
+                'event' => 'seeker_resume_uploaded',
+                'user_id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->role,
+                'resume_path' => $user->resume_path,
+                'resume_text' => $user->resume_text,
+                'parsed_skill' => $user->parsed_skill,
+                'educational_attainment' => $user->educational_attainment,
+                'uploaded_docs' => $user->uploaded_docs,
+            ]);
+
+            if ($response->successful()) {
+                Log::info("n8n seeker resume webhook success for user {$user->id}", [
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                ]);
+            } else {
+                Log::warning("n8n seeker resume webhook non-success for user {$user->id}", [
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                ]);
+            }
+        } catch (\Throwable $error) {
+            Log::error('n8n seeker resume webhook trigger failed: ' . $error->getMessage());
+        }
     }
 
     private function extractSkillsFromText(string $text): array

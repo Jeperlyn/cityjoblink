@@ -1,0 +1,121 @@
+{
+  "name": "Seeker Resume Recommendation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "seeker-resume-recommendation",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        260,
+        120
+      ],
+      "id": "b6f9f2e1-3a7d-4c7b-9d3e-111111111111",
+      "name": "Webhook1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, title, company, location, required_skills, description, educational_attainment_required, status\nFROM jobs_catalog\nWHERE status = 'Open'\nORDER BY created_at DESC\nLIMIT 200;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        500,
+        120
+      ],
+      "id": "76a8d78f-9b85-4c9d-bfff-222222222222",
+      "name": "Get Open Jobs",
+      "credentials": {
+        "postgres": {
+          "id": "3t9IN3420wnFrcDg",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const webhookItem = $('Webhook1').first()?.json ?? {};\nconst payload = webhookItem.body ?? webhookItem;\nconst event = String(payload?.event || '').toLowerCase();\n\nif (event !== 'seeker_resume_uploaded') {\n  return [];\n}\n\nconst seekerEmail = String(payload.email || '').trim();\nif (!seekerEmail) {\n  throw new Error('Missing seeker email in payload');\n}\n\nconst seekerName = String(payload.name || 'Jobseeker').trim();\nconst resumeText = String(payload.resume_text || '').toLowerCase();\nconst seekerEducation = String(payload.educational_attainment || '').toLowerCase();\n\nlet seekerSkills = payload.parsed_skill ?? [];\nif (typeof seekerSkills === 'string') {\n  try {\n    seekerSkills = JSON.parse(seekerSkills);\n  } catch {\n    seekerSkills = [seekerSkills];\n  }\n}\nif (!Array.isArray(seekerSkills) && typeof seekerSkills === 'object' && seekerSkills !== null) {\n  seekerSkills = Object.values(seekerSkills);\n}\nseekerSkills = seekerSkills.map((s) => String(s).toLowerCase().trim()).filter(Boolean);\n\nconst jobs = $input.all().map((item) => item.json);\nconst scored = [];\n\nconst eduMap = {\n  doctorate: ['phd', 'doctorate', 'doctor of'],\n  masters: ['master', 'ms', 'ma', 'mba'],\n  bachelors: ['bachelor', 'bs', 'ba', 'college', 'degree'],\n  vocational: ['vocational', 'tesda', 'certificate'],\n  highschool: ['high school', 'secondary']\n};\n\nfor (const job of jobs) {\n  const title = String(job.title || '');\n  const company = String(job.company || '');\n  const location = String(job.location || '');\n  const description = String(job.description || '').toLowerCase();\n  const requiredEducation = String(job.educational_attainment_required || '').toLowerCase();\n\n  let requiredSkills = job.required_skills ?? [];\n  if (typeof requiredSkills === 'string') {\n    try {\n      requiredSkills = JSON.parse(requiredSkills);\n    } catch {\n      requiredSkills = [requiredSkills];\n    }\n  }\n  if (!Array.isArray(requiredSkills) && typeof requiredSkills === 'object' && requiredSkills !== null) {\n    requiredSkills = Object.values(requiredSkills);\n  }\n  requiredSkills = requiredSkills.map((s) => String(s).toLowerCase().trim()).filter(Boolean);\n\n  let score = 0;\n  const reasons = [];\n\n  let skillHits = 0;\n  for (const skill of requiredSkills) {\n    if (seekerSkills.includes(skill) || resumeText.includes(skill)) {\n      skillHits++;\n    }\n  }\n  if (requiredSkills.length > 0) {\n    const skillScore = (skillHits / requiredSkills.length) * 60;\n    score += skillScore;\n    if (skillHits > 0) reasons.push(`${skillHits}/${requiredSkills.length} required skills matched`);\n  }\n\n  const titleKeywords = title.toLowerCase().split(/\\s+/).filter((w) => w.length > 3);\n  const titleHits = titleKeywords.filter((k) => resumeText.includes(k)).length;\n  if (titleKeywords.length > 0) {\n    const titleScore = (titleHits / titleKeywords.length) * 25;\n    score += titleScore;\n    if (titleHits > 0) reasons.push(`title alignment (${titleHits} keyword hit/s)`);\n  }\n\n  if (requiredEducation && requiredEducation !== 'any') {\n    const eduMatched = seekerEducation.includes(requiredEducation) || resumeText.includes(requiredEducation) || Object.values(eduMap).some((keys) => keys.some((k) => requiredEducation.includes(k) && (seekerEducation.includes(k) || resumeText.includes(k))));\n    if (eduMatched) {\n      score += 15;\n      reasons.push('education aligned');\n    }\n  } else {\n    score += 10;\n  }\n\n  const finalScore = Math.round(Math.min(score, 100));\n  if (finalScore > 0) {\n    scored.push({\n      job_id: job.id,\n      title,\n      company,\n      location,\n      score: finalScore,\n      reasons: reasons.join(' | ') || 'General profile fit'\n    });\n  }\n}\n\nscored.sort((a, b) => b.score - a.score);\nconst top = scored.slice(0, 5);\n\nreturn [{\n  json: {\n    event: 'seeker_resume_uploaded',\n    to_email: seekerEmail,\n    seeker_name: seekerName,\n    recommendations: top\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        120
+      ],
+      "id": "9a3ef532-8aa8-4e14-9f03-333333333333",
+      "name": "Score Jobs"
+    },
+    {
+      "parameters": {
+        "fromEmail": "cityjoblink.direct@gmail.com",
+        "toEmail": "={{ $json.to_email }}",
+        "subject": "Your top recommended jobs on CityJobLink",
+        "emailFormat": "html",
+        "html": "=Hi {{ $json.seeker_name }},<br/><br/>Thanks for uploading your resume. Here are your top recommended jobs:<br/><br/><ul>{{ ($json.recommendations || []).map(r => `<li><b>${r.title}</b> - ${r.company} (${r.location}) <b>${r.score}%</b><br/><small>${r.reasons}</small></li>`).join('') }}</ul><br/>Log in to CityJobLink to view and apply.<br/><br/>Best regards,<br/>CityJobLink Team",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1020,
+        120
+      ],
+      "id": "4f0a0ad9-3bba-4f00-a9dd-444444444444",
+      "name": "Send Recommendation Email",
+      "credentials": {
+        "smtp": {
+          "id": "fJ6zTRRaEJz5Zvw9",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Get Open Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Open Jobs": {
+      "main": [
+        [
+          {
+            "node": "Score Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Jobs": {
+      "main": [
+        [
+          {
+            "node": "Send Recommendation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "tags": []
+}

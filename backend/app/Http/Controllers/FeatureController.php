@@ -289,9 +289,9 @@ class FeatureController extends Controller
             $authUser = config('services.n8n.basic_auth_user');
             $authPassword = config('services.n8n.basic_auth_password');
 
-            if ($authUser !== null && $authPassword !== null && $authUser !== '' && $authPassword !== '') {
-                $request = $request->withBasicAuth((string) $authUser, (string) $authPassword);
-            }
+        if ($authUser !== null && $authPassword !== null && $authUser !== '' && $authPassword !== '') {
+            $request = $request->withBasicAuth((string) $authUser, (string) $authPassword);
+        }
 
             $skillsRequired = json_decode((string) ($job->required_skills ?? '[]'), true) ?: [];
 
