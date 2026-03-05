@@ -1,6 +1,7 @@
 // src/pages/AdminDashboard.jsx
 import React, { useState } from 'react';
 import { File, Calendar, Plus, Users, MapPin, Clock, CheckCircle, Image as ImageIcon, XCircle, AlertTriangle } from 'lucide-react';
+import { buildBackendUrl } from '../lib/apiBase';
 
 const AdminDashboard = ({ employers, onVerifyEmployer, jobFairs, onAddJobFair }) => {
   const [activeTab, setActiveTab] = useState('employers'); 
@@ -89,9 +90,7 @@ const AdminDashboard = ({ employers, onVerifyEmployer, jobFairs, onAddJobFair })
           return;
       }
 
-      const docUrl = rawPath.startsWith('http')
-          ? rawPath
-          : `http://localhost:8000/${rawPath.replace(/^\/+/, '')}`;
+      const docUrl = buildBackendUrl(rawPath);
 
       window.open(docUrl, '_blank', 'noopener,noreferrer');
   };
@@ -328,3 +327,4 @@ const AdminDashboard = ({ employers, onVerifyEmployer, jobFairs, onAddJobFair })
 };
 
 export default AdminDashboard;
+

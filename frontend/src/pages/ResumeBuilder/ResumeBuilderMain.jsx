@@ -556,3 +556,4 @@ export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
     </div>
   );
 }
+

@@ -141,3 +141,4 @@ const SeekerDashboardv1 = ({ profile, applications = [], jobs = [], onNavigate }
 };
 
 export default SeekerDashboardv1;
+

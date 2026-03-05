@@ -81,3 +81,4 @@ export default function MinimalTemplate({ personalInfo = {}, experiences = [], e
     </Card>
   );
 }
+

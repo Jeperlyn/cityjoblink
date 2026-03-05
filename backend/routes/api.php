@@ -10,6 +10,8 @@ use App\Http\Controllers\EmployerController;
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
+Route::post('/forgot-password/request', [AuthController::class, 'requestPasswordResetOtp']);
+Route::post('/forgot-password/reset', [AuthController::class, 'resetPasswordWithOtp']);
 Route::post('/upload/resume', [AuthController::class, 'uploadResume']);
 Route::delete('/upload/resume', [AuthController::class, 'deleteResume']);
 Route::post('/upload/employer-documents', [AuthController::class, 'uploadEmployerDocuments']);
@@ -32,6 +34,8 @@ Route::patch('/applications/status', [FeatureController::class, 'updateApplicati
 
 // --- Other Features ---
 Route::get('/trainings', [FeatureController::class, 'trainings']);
+Route::post('/trainings/register', [FeatureController::class, 'registerTraining']);
+Route::patch('/trainings/withdraw', [FeatureController::class, 'withdrawTraining']);
 Route::get('/admin/employers', [FeatureController::class, 'adminEmployers']);
 Route::patch('/admin/employers/review', [FeatureController::class, 'reviewEmployer']);
 Route::post('/employer/jobs', [EmployerController::class, 'storeJob']);

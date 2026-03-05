@@ -83,3 +83,4 @@ export default function FunctionalTemplate({ personalInfo = {}, experiences = []
     </Card>
   );
 }
+

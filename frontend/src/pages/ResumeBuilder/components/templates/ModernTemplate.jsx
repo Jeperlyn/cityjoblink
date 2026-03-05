@@ -53,3 +53,4 @@ export default function ModernTemplate({ personalInfo = {}, experiences = [], ed
     </Card>
   );
 }
+

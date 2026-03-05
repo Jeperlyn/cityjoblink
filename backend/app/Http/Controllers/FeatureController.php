@@ -60,6 +60,50 @@ class FeatureController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Job not found.'], 404);
         }
 
+        $educationCheck = $this->evaluateEducationQualification(
+            (string) ($job->educational_attainment_required ?? ''),
+            (string) ($seeker->educational_attainment ?? '')
+        );
+
+        if ($educationCheck['is_required'] && !$educationCheck['qualified']) {
+            $requiredLabel = $educationCheck['required_label'] ?? 'the required educational attainment';
+            $candidateLabel = $educationCheck['candidate_label'] ?? 'Not specified';
+            $rejectionReason = "Automatically declined: This job requires {$requiredLabel}, while your educational attainment is {$candidateLabel}. You are not qualified for this position.";
+
+            $applicationId = DB::table('applications')->insertGetId([
+                'job_id' => $request->job_id,
+                'seeker_id' => $seeker->id,
+                'status' => 'Rejected',
+                'rejection_reason' => $rejectionReason,
+                'applied_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            DB::table('notifications')->insert([
+                'to_user_id' => $seeker->id,
+                'content' => "You are not qualified for {$job->title}. {$rejectionReason}",
+                'meta' => json_encode([
+                    'type' => 'application_auto_rejected_education',
+                    'application_id' => $applicationId,
+                    'job_id' => $job->id,
+                    'required_education' => $requiredLabel,
+                    'candidate_education' => $candidateLabel,
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $application = DB::table('applications')->where('id', $applicationId)->first();
+
+            return response()->json([
+                'status' => 'error',
+                'code' => 'EDUCATION_NOT_QUALIFIED',
+                'message' => $rejectionReason,
+                'application' => $application,
+            ], 422);
+        }
+
         $applicationId = DB::table('applications')->insertGetId([
             'job_id' => $request->job_id,
             'seeker_id' => $seeker->id,
@@ -96,7 +140,16 @@ class FeatureController extends Controller
         $request->validate([
             'email' => ['required', 'email'],
             'application_id' => ['required', 'integer', 'exists:applications,id'],
+            'reason' => ['required', 'string', 'max:1000'],
         ]);
+
+        $withdrawReason = trim((string) $request->reason);
+        if ($withdrawReason === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Withdrawal reason is required.',
+            ], 422);
+        }
 
         $seeker = User::where('email', $request->email)->first();
         if (!$seeker) {
@@ -116,6 +169,7 @@ class FeatureController extends Controller
             ->where('id', $request->application_id)
             ->update([
                 'status' => 'Withdrawn',
+                'rejection_reason' => $withdrawReason,
                 'updated_at' => now(),
             ]);
 
@@ -497,9 +551,110 @@ class FeatureController extends Controller
 
         $trainings = $query->orderBy('t.start_date')->get();
 
+        $registeredByTraining = DB::table('training_registrations')
+            ->select('training_id', 'user_id')
+            ->get()
+            ->groupBy('training_id');
+
+        $trainings = $trainings->map(function ($training) use ($registeredByTraining) {
+            $registeredUserIds = ($registeredByTraining->get($training->id) ?? collect())
+                ->pluck('user_id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all();
+
+            $training->registered_user_ids = $registeredUserIds;
+
+            return $training;
+        });
+
         return response()->json([
             'status' => 'success',
             'trainings' => $trainings,
+        ]);
+    }
+
+    public function registerTraining(Request $request)
+    {
+        $request->validate([
+            'email' => ['required', 'email'],
+            'training_id' => ['required', 'integer', 'exists:trainings,id'],
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+        if (!$user) {
+            return response()->json(['status' => 'error', 'message' => 'User not found.'], 404);
+        }
+
+        $training = DB::table('trainings')->where('id', $request->training_id)->first();
+        if (!$training) {
+            return response()->json(['status' => 'error', 'message' => 'Training not found.'], 404);
+        }
+
+        $alreadyRegistered = DB::table('training_registrations')
+            ->where('training_id', $training->id)
+            ->where('user_id', $user->id)
+            ->exists();
+
+        if ($alreadyRegistered) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Already registered for this training.',
+            ]);
+        }
+
+        $registeredCount = DB::table('training_registrations')
+            ->where('training_id', $training->id)
+            ->count();
+
+        if ((int) $registeredCount >= (int) ($training->slots ?? 0)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'No available slots for this training.',
+            ], 422);
+        }
+
+        DB::table('training_registrations')->insert([
+            'training_id' => $training->id,
+            'user_id' => $user->id,
+            'registered_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Training registration successful.',
+        ]);
+    }
+
+    public function withdrawTraining(Request $request)
+    {
+        $request->validate([
+            'email' => ['required', 'email'],
+            'training_id' => ['required', 'integer', 'exists:trainings,id'],
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+        if (!$user) {
+            return response()->json(['status' => 'error', 'message' => 'User not found.'], 404);
+        }
+
+        $deleted = DB::table('training_registrations')
+            ->where('training_id', $request->training_id)
+            ->where('user_id', $user->id)
+            ->delete();
+
+        if (!$deleted) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You are not registered for this training.',
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Training withdrawal successful.',
         ]);
     }
 
@@ -606,7 +761,7 @@ class FeatureController extends Controller
         $metrics = $this->calculateMatchMetricsForJobAndSeeker($job, $user);
         $n8nMatch = $this->getLatestN8nMatch((int) $job->id, (int) $user->id);
 
-        if ($n8nMatch) {
+        if ($n8nMatch && $metrics['education_match'] !== false) {
             $metrics['score'] = (int) $n8nMatch->match_score;
         }
 
@@ -670,7 +825,18 @@ class FeatureController extends Controller
                 'jm.match_score',
                 'jm.match_reasons',
             ])
-            ->get();
+            ->get()
+            ->filter(function ($item) use ($user) {
+                $job = (object) [
+                    'required_skills' => $item->required_skills,
+                    'educational_attainment_required' => $item->educational_attainment_required,
+                ];
+
+                $metrics = $this->calculateMatchMetricsForJobAndSeeker($job, $user);
+
+                return $metrics['education_match'] !== false;
+            })
+            ->values();
 
         return response()->json([
             'status' => 'success',
@@ -752,6 +918,14 @@ class FeatureController extends Controller
                 $item->missing_skills = $metrics['missing_skills'];
                 $item->education_match = $metrics['education_match'];
                 $item->match_reasons = $item->n8n_match_reasons;
+
+                if ($metrics['education_match'] === false) {
+                    $item->fit_score = 0;
+                    $educationReason = 'Auto-disqualified: educational attainment does not meet the job requirement.';
+                    $item->match_reasons = $item->n8n_match_reasons
+                        ? $item->n8n_match_reasons . ' | ' . $educationReason
+                        : $educationReason;
+                }
 
                 return $item;
             })
@@ -881,13 +1055,20 @@ class FeatureController extends Controller
             'updated_at' => now(),
         ]);
 
+        $senderLabel = trim((string) ($fromUser->company_name ?: $fromUser->name ?: 'New message'));
+        $messagePreview = trim((string) $request->content);
+        if (mb_strlen($messagePreview) > 120) {
+            $messagePreview = mb_substr($messagePreview, 0, 117) . '...';
+        }
+
         DB::table('notifications')->insert([
             'to_user_id' => $request->to_user_id,
-            'content' => 'You have a new message.',
+            'content' => $senderLabel . ': ' . $messagePreview,
             'meta' => json_encode([
                 'type' => 'message',
                 'message_id' => $messageId,
                 'from_user_id' => $fromUser->id,
+                'message_preview' => $messagePreview,
             ]),
             'created_at' => now(),
             'updated_at' => now(),
@@ -980,9 +1161,11 @@ class FeatureController extends Controller
         $jobRequiredEducation = trim((string) ($job->educational_attainment_required ?? ''));
         $userEducation = trim((string) ($user->educational_attainment ?? ''));
 
-        $educationMatch = false;
-        if ($jobRequiredEducation !== '') {
-            $educationMatch = mb_strtolower($jobRequiredEducation) === mb_strtolower($userEducation);
+        $educationCheck = $this->evaluateEducationQualification($jobRequiredEducation, $userEducation);
+        $educationMatch = $educationCheck['is_required'] ? $educationCheck['qualified'] : null;
+
+        if ($educationMatch === false) {
+            $score = 0;
         }
 
         return [
@@ -991,10 +1174,91 @@ class FeatureController extends Controller
             'missing_skills' => array_values(array_unique($missing)),
             'required_skills_count' => count($requiredSkills),
             'user_skills_count' => count($userSkills),
-            'education_match' => $jobRequiredEducation === '' ? null : $educationMatch,
-            'job_required_education' => $jobRequiredEducation !== '' ? $jobRequiredEducation : null,
-            'user_education' => $userEducation !== '' ? $userEducation : null,
+            'education_match' => $educationMatch,
+            'job_required_education' => $educationCheck['required_label'],
+            'user_education' => $educationCheck['candidate_label'],
         ];
+    }
+
+    private function evaluateEducationQualification(string $requiredEducation, string $candidateEducation): array
+    {
+        $requiredLabel = trim($requiredEducation);
+        $candidateLabel = trim($candidateEducation);
+
+        $requiredNormalized = mb_strtolower($requiredLabel);
+        $isRequired = $requiredNormalized !== '' && !in_array($requiredNormalized, ['any', 'not specified', 'n/a', 'na', 'none'], true);
+
+        if (!$isRequired) {
+            return [
+                'is_required' => false,
+                'qualified' => true,
+                'required_label' => null,
+                'candidate_label' => $candidateLabel !== '' ? $candidateLabel : null,
+                'required_level' => null,
+                'candidate_level' => $this->inferEducationLevel($candidateLabel),
+            ];
+        }
+
+        $requiredLevel = $this->inferEducationLevel($requiredLabel);
+        $candidateLevel = $this->inferEducationLevel($candidateLabel);
+
+        $qualified = false;
+
+        if ($requiredLevel !== null && $candidateLevel !== null) {
+            $qualified = $this->educationLevelRank($candidateLevel) >= $this->educationLevelRank($requiredLevel);
+        } else {
+            $candidateNormalized = mb_strtolower($candidateLabel);
+            $qualified = $candidateNormalized !== ''
+                && ($candidateNormalized === $requiredNormalized || str_contains($candidateNormalized, $requiredNormalized));
+        }
+
+        return [
+            'is_required' => true,
+            'qualified' => $qualified,
+            'required_label' => $requiredLabel !== '' ? $requiredLabel : null,
+            'candidate_label' => $candidateLabel !== '' ? $candidateLabel : null,
+            'required_level' => $requiredLevel,
+            'candidate_level' => $candidateLevel,
+        ];
+    }
+
+    private function inferEducationLevel(string $value): ?string
+    {
+        $normalized = mb_strtolower(trim($value));
+        if ($normalized === '' || in_array($normalized, ['any', 'not specified', 'n/a', 'na', 'none'], true)) {
+            return null;
+        }
+
+        $map = [
+            'doctorate' => ['doctorate', 'doctoral', 'phd', 'doctor of philosophy'],
+            'masters' => ['master', 'masters', "master's", 'm.s', 'ms', 'm.a', 'ma', 'mba'],
+            'bachelors' => ['bachelor', 'bachelors', "bachelor's", 'b.s', 'bs', 'b.a', 'ba', 'college graduate', 'college grad', 'degree'],
+            'associate' => ['associate degree', 'associate'],
+            'vocational' => ['vocational', 'tesda', 'certificate', 'technical-vocational', 'nc ii', 'nc iii'],
+            'highschool' => ['high school', 'secondary', 'senior high', 'shs'],
+        ];
+
+        foreach ($map as $level => $keywords) {
+            foreach ($keywords as $keyword) {
+                if (str_contains($normalized, $keyword)) {
+                    return $level;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function educationLevelRank(string $level): int
+    {
+        return match ($level) {
+            'highschool' => 1,
+            'associate', 'vocational' => 2,
+            'bachelors' => 3,
+            'masters' => 4,
+            'doctorate' => 5,
+            default => 0,
+        };
     }
 
     private function getLatestN8nMatch(int $jobId, int $userId): ?object

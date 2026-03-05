@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Smalot\PdfParser\Parser as PdfParser;
 use ZipArchive;
 
@@ -22,7 +23,7 @@ class AuthController extends Controller
         try {
             $request->validate([
                 'email' => ['required', 'email'],
-                'password' => ['required', 'string', 'min:8'],
+                'password' => ['required', 'string', 'min:8', 'confirmed'],
                 'role' => ['nullable', 'in:Seeker,Employer,Admin'],
                 'firstName' => ['nullable', 'string', 'max:100'],
                 'lastName' => ['nullable', 'string', 'max:100'],
@@ -105,6 +106,12 @@ class AuthController extends Controller
                 'status' => 'error',
                 'message' => 'OTP could not be sent right now. Please try again later.',
             ], 503);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->validator->errors()->first() ?: 'Validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Registration failed.', [
                 'email' => $request->email,
@@ -131,6 +138,140 @@ class AuthController extends Controller
             return response()->json(['status' => 'success', 'user' => $user]);
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function requestPasswordResetOtp(Request $request)
+    {
+        try {
+            $request->validate([
+                'email' => ['required', 'email'],
+            ]);
+
+            $email = strtolower((string) $request->email);
+            $user = User::where('email', $email)->first();
+
+            if (!$user) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Email is not registered.',
+                ], 404);
+            }
+
+            $otpCode = (string) rand(100000, 999999);
+            $cacheKey = 'password_reset_otp_' . $email;
+
+            Cache::put($cacheKey, [
+                'email' => $email,
+                'otp' => $otpCode,
+            ], now()->addMinutes(10));
+
+            $mailDelivered = true;
+            try {
+                Mail::raw("Your CityJobLink password reset code is: {$otpCode}", function ($message) use ($email) {
+                    $message->to($email)
+                        ->subject('CityJobLink - Password Reset Code');
+                });
+            } catch (\Throwable $mailException) {
+                $mailDelivered = false;
+                Log::warning('Password reset OTP email delivery failed.', [
+                    'email' => $email,
+                    'error' => $mailException->getMessage(),
+                ]);
+            }
+
+            if ($mailDelivered) {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Password reset code sent to your email.',
+                ]);
+            }
+
+            if (config('app.debug')) {
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Reset code generated, but email delivery failed. Use the dev reset code for local testing.',
+                    'dev_otp' => $otpCode,
+                ]);
+            }
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Reset code could not be sent right now. Please try again later.',
+            ], 503);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->validator->errors()->first() ?: 'Validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Password reset OTP request failed.', [
+                'email' => $request->email,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unable to process password reset request.',
+            ], 500);
+        }
+    }
+
+    public function resetPasswordWithOtp(Request $request)
+    {
+        try {
+            $request->validate([
+                'email' => ['required', 'email'],
+                'otp' => ['required', 'digits:6'],
+                'password' => ['required', 'string', 'min:8', 'confirmed'],
+            ]);
+
+            $email = strtolower((string) $request->email);
+            $user = User::where('email', $email)->first();
+
+            if (!$user) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Email is not registered.',
+                ], 404);
+            }
+
+            $cacheKey = 'password_reset_otp_' . $email;
+            $pendingReset = Cache::get($cacheKey);
+
+            if (!$pendingReset || (string) ($pendingReset['otp'] ?? '') !== (string) $request->otp) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid or expired reset code.',
+                ], 401);
+            }
+
+            $user->password = Hash::make((string) $request->password);
+            $user->save();
+
+            Cache::forget($cacheKey);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Password has been reset successfully. You can now log in.',
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->validator->errors()->first() ?: 'Validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Password reset failed.', [
+                'email' => $request->email,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unable to reset password right now.',
+            ], 500);
         }
     }
 

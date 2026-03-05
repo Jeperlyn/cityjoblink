@@ -111,3 +111,4 @@ const Navbar = ({ user, onLogout, onNavigate, messages, unreadNotifs, currentVie
 };
 
 export default Navbar;
+

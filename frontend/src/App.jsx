@@ -36,6 +36,7 @@ import SeekerDashboard, { FindJobs, JobDetailsPage, DashboardOverview } from './
 import EmployerDashboard from './pages/EmployerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import ResumeBuilderMain from './pages/ResumeBuilder/ResumeBuilderMain.jsx';
+import { API_BASE } from './lib/apiBase';
 
 // Import Data
 import { 
@@ -73,8 +74,6 @@ const normalizeUserProfile = (rawUser) => {
         verificationDocPath: rawUser.verificationDocPath || rawUser.verification_doc_path || null,
     };
 };
-
-const API_BASE = 'http://localhost:8000/api';
 
 const parseJsonArray = (value) => {
     if (Array.isArray(value)) return value;
@@ -331,7 +330,9 @@ const App = () => {
             description: training.description,
             date: training.start_date,
             slots: Number(training.available_slots ?? training.slots ?? 0),
-            registeredUsers: [],
+            registeredUsers: Array.isArray(training.registered_user_ids)
+                ? training.registered_user_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id))
+                : [],
         }));
     };
 
@@ -424,13 +425,30 @@ const App = () => {
         const data = await response.json();
         if (!response.ok || data.status !== 'success') throw new Error(data?.message || 'Failed loading notifications');
 
-        return (data.notifications || []).map((notification) => ({
-            id: notification.id,
-            toId: notification.to_user_id,
-            content: notification.content,
-            read: !!notification.read_at,
-            date: notification.created_at,
-        }));
+        return (data.notifications || []).map((notification) => {
+            const rawMeta = notification.meta;
+            let parsedMeta = rawMeta;
+
+            if (typeof rawMeta === 'string') {
+                try {
+                    parsedMeta = JSON.parse(rawMeta);
+                } catch {
+                    parsedMeta = null;
+                }
+            }
+
+            return {
+                id: notification.id,
+                toId: notification.to_user_id,
+                content: notification.content
+                    || (parsedMeta?.type === 'message' && parsedMeta?.message_preview
+                        ? `New message: ${parsedMeta.message_preview}`
+                        : 'New notification.'),
+                read: !!notification.read_at,
+                date: notification.created_at,
+                meta: parsedMeta,
+            };
+        });
     };
 
     const fetchMatchMetrics = async (email, jobId) => {
@@ -452,13 +470,14 @@ const App = () => {
 
         const bootstrap = async () => {
             try {
-                const [profileData, jobsData, trainingsData, applicationsData, notificationsData, recommendationsData] = await Promise.all([
+                const [profileData, jobsData, trainingsData, applicationsData, notificationsData, recommendationsData, messagesData] = await Promise.all([
                     fetchSeekerProfile(user.email),
                     fetchJobs(),
                     fetchTrainings(),
                     fetchApplications(user.email, user.id),
                     fetchNotifications(user.email),
                     fetchSeekerRecommendations(user.email, 50),
+                    fetchMessages(user.email),
                 ]);
 
                 setUser(profileData);
@@ -468,6 +487,7 @@ const App = () => {
                 setApplications(applicationsData);
                 setNotifications(notificationsData);
                 setSeekerRecommendations(recommendationsData);
+                setMessages(messagesData);
             } catch (error) {
                 console.error('Seeker bootstrap failed:', error);
             }
@@ -475,6 +495,21 @@ const App = () => {
 
         bootstrap();
     }, [user?.id, user?.role, user?.email]);
+
+    useEffect(() => {
+        if (!user?.email || currentView !== 'messages') return;
+
+        const loadMessages = async () => {
+            try {
+                const refreshedMessages = await fetchMessages(user.email);
+                setMessages(refreshedMessages);
+            } catch (error) {
+                console.error('Messages refresh failed:', error);
+            }
+        };
+
+        loadMessages();
+    }, [currentView, user?.email]);
 
     useEffect(() => {
         if (!user || user.role !== 'Admin') return;
@@ -663,7 +698,10 @@ const App = () => {
     };
 
     const handleCancelApplication = async (appId, reason = '') => {
-        if (!user?.email) return showToast('Missing account email.', 'error');
+        if (!user?.email) {
+            showToast('Missing account email.', 'error');
+            return false;
+        }
 
         try {
             const response = await fetch(`${API_BASE}/applications/withdraw`, {
@@ -687,12 +725,14 @@ const App = () => {
             const refreshedApplications = await fetchApplications(user.email, user.id);
             setApplications(refreshedApplications);
             showToast('Application withdrawn successfully', 'success');
+            return true;
         } catch (error) {
             showToast(error?.message || 'Failed to withdraw application.', 'error');
+            return false;
         }
     };
 
-    const handleRegisterTraining = (trainingId) => {
+    const handleRegisterTraining = async (trainingId) => {
         if (!user) return setCurrentView('login');
         
         // Check if already registered
@@ -706,20 +746,69 @@ const App = () => {
             showToast('You are already registered for this training!', 'warning');
             return;
         }
-        
-        // Add user to registeredUsers and decrement slots
-        setTrainings(prev => prev.map(t => 
-            t.id === trainingId 
-                ? { 
-                    ...t, 
-                    slots: (t.slots || 0) - 1,
-                    registeredUsers: [...(t.registeredUsers || []), user.id]
-                  }
-                : t
-        ));
-        
-        showToast(`Registered for ${training.title}! ✓`, 'success');
-        setCurrentView('seeker-dash');
+
+        try {
+            const response = await fetch(`${API_BASE}/trainings/register`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                    email: user.email,
+                    training_id: trainingId,
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data?.message || 'Failed to register for training.');
+            }
+
+            const refreshedTrainings = await fetchTrainings();
+            setTrainings(refreshedTrainings);
+
+            showToast(`Registered for ${training.title}! ✓`, 'success');
+            setCurrentView('seeker-dash');
+        } catch (error) {
+            showToast(error?.message || 'Failed to register for training.', 'error');
+        }
+    };
+
+    const handleWithdrawTraining = async (trainingId) => {
+        if (!user?.email) {
+            showToast('Missing account email.', 'error');
+            return false;
+        }
+
+        const training = trainings.find(t => t.id === trainingId);
+
+        try {
+            const response = await fetch(`${API_BASE}/trainings/withdraw`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                    email: user.email,
+                    training_id: trainingId,
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data?.message || 'Failed to withdraw from training.');
+            }
+
+            const refreshedTrainings = await fetchTrainings();
+            setTrainings(refreshedTrainings);
+            showToast(`Withdrawn from ${training?.title || 'training'}.`, 'success');
+            return true;
+        } catch (error) {
+            showToast(error?.message || 'Failed to withdraw from training.', 'error');
+            return false;
+        }
     };
 
     const handleRegisterJobFair = (jobFairId) => {
@@ -947,6 +1036,7 @@ const App = () => {
                 onNavigate={setCurrentView}
                 onViewJob={(j) => handleViewJobDetails(j, 'seeker-dash')}
                 onCancelApplication={handleCancelApplication}
+                onWithdrawTraining={handleWithdrawTraining}
                 onUpdateProfile={(updatedUser) => {
                     const normalized = normalizeUserProfile(updatedUser);
                     setUser(normalized);
@@ -1004,3 +1094,4 @@ const App = () => {
 };
 
 export default App;
+

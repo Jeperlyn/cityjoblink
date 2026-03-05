@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Building2, CreditCard, FileCheck, HelpCircle, UploadCloud, Globe, MapPin, Phone, CheckCircle, AlertCircle, Loader2, Lock, UserCheck, ShieldCheck } from 'lucide-react';
+import { X, Building2, CreditCard, FileCheck, HelpCircle, UploadCloud, Globe, MapPin, Phone, CheckCircle, AlertCircle, Loader2, Lock, UserCheck, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { API_BASE } from '../lib/apiBase';
 
 // --- SMART MODAL COMPONENT ---
 const SmartModal = ({ type, title, message, onClose }) => {
@@ -38,13 +39,17 @@ const Login = ({ onLogin }) => {
   const [role, setRole] = useState('Seeker'); 
   const [isLoading, setIsLoading] = useState(false);
   const [isOtpStep, setIsOtpStep] = useState(false);
+    const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false);
+    const [forgotCodeSent, setForgotCodeSent] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [modal, setModal] = useState({ type: null, title: '', message: '' });
   
   const qcIdInputRef = useRef(null);
 
   const [formData, setFormData] = useState({ 
-    email: '', password: '', firstName: '', middleName: '', lastName: '', suffix: '', 
+        email: '', password: '', confirmPassword: '', resetOtp: '', firstName: '', middleName: '', lastName: '', suffix: '', 
     companyName: '', industry: '', companyAddress: '', companyWebsite: '', contactNumber: '', 
     qcId: '', qcIdFile: null, 
     bdayMonth: 'Jan', bdayDay: '1', bdayYear: '2005', gender: '',
@@ -80,6 +85,9 @@ const Login = ({ onLogin }) => {
     // 2. Password Validation
     const passErr = validatePassword(formData.password);
     if (passErr) return passErr;
+    if (formData.password !== formData.confirmPassword) {
+        return "Password confirmation does not match.";
+    }
 
     if (role === 'Seeker') {
         const nameRegex = /^[a-zA-Z\s.-]*$/;
@@ -138,7 +146,7 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-        const response = await fetch('http://localhost:8000/api/verify-otp', {
+        const response = await fetch(`${API_BASE}/verify-otp`, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
@@ -149,7 +157,7 @@ const Login = ({ onLogin }) => {
                 
         const data = await response.json();
         if (response.ok) {
-            const loginResponse = await fetch('http://localhost:8000/api/login', {
+            const loginResponse = await fetch(`${API_BASE}/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: formData.email, password: formData.password })
@@ -171,6 +179,99 @@ const Login = ({ onLogin }) => {
     }
   };
 
+    const handleForgotPasswordRequest = async (e) => {
+        e.preventDefault();
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(formData.email)) {
+            setModal({ type: 'error', title: 'Invalid Email', message: 'Please enter a valid email address.' });
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const response = await fetch(`${API_BASE}/forgot-password/request`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ email: formData.email })
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                setForgotCodeSent(true);
+                const successMessage = data.dev_otp
+                    ? `${data.message}\n\nDEV OTP: ${data.dev_otp}`
+                    : (data.message || `Reset code sent to ${formData.email}`);
+                setModal({ type: 'success', title: 'Code Sent!', message: successMessage });
+            } else {
+                setModal({ type: 'error', title: 'Request Failed', message: data.message || 'Unable to send reset code.' });
+            }
+        } catch (err) {
+            setModal({ type: 'error', title: 'Server Error', message: 'Cannot reach password reset server.' });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleForgotPasswordReset = async (e) => {
+        e.preventDefault();
+
+        if (!formData.resetOtp || formData.resetOtp.length !== 6) {
+            setModal({ type: 'error', title: 'Invalid Code', message: 'Please enter the 6-digit reset code.' });
+            return;
+        }
+
+        const passErr = validatePassword(formData.password);
+        if (passErr) {
+            setModal({ type: 'error', title: 'Validation Failed', message: passErr });
+            return;
+        }
+
+        if (formData.password !== formData.confirmPassword) {
+            setModal({ type: 'error', title: 'Validation Failed', message: 'Password confirmation does not match.' });
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const response = await fetch(`${API_BASE}/forgot-password/reset`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    email: formData.email,
+                    otp: formData.resetOtp,
+                    password: formData.password,
+                    password_confirmation: formData.confirmPassword,
+                })
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                setModal({ type: 'success', title: 'Password Reset', message: data.message || 'Password has been reset.' });
+                setIsForgotPasswordMode(false);
+                setForgotCodeSent(false);
+                setFormData((prev) => ({
+                    ...prev,
+                    password: '',
+                    confirmPassword: '',
+                    resetOtp: '',
+                }));
+            } else {
+                setModal({ type: 'error', title: 'Reset Failed', message: data.message || 'Unable to reset password.' });
+            }
+        } catch (err) {
+            setModal({ type: 'error', title: 'Server Error', message: 'Cannot reach password reset server.' });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
 const handleSubmit = async (e) => { 
     e.preventDefault(); 
     
@@ -183,7 +284,7 @@ const handleSubmit = async (e) => {
 
         setIsLoading(true);
         try {
-            const regResponse = await fetch('http://localhost:8000/api/register', {
+            const regResponse = await fetch(`${API_BASE}/register`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -206,6 +307,7 @@ const handleSubmit = async (e) => {
                     isQcResident: formData.isQcResident,
                     email: formData.email,
                     password: formData.password,
+                    password_confirmation: formData.confirmPassword,
                     role: role
                 })
             });
@@ -232,7 +334,7 @@ const handleSubmit = async (e) => {
 // --- LOGIN FLOW ---
         setIsLoading(true);
         try {
-            const response = await fetch('http://localhost:8000/api/login', {
+            const response = await fetch(`${API_BASE}/login`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -264,10 +366,10 @@ const handleSubmit = async (e) => {
         {/* HEADER */}
         <div className="text-center mb-6">
             <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
-                {isOtpStep ? 'Security Check' : (mode === 'login' ? 'CityJobLink' : 'Registration')}
+                {isOtpStep ? 'Security Check' : (isForgotPasswordMode ? 'Reset Password' : (mode === 'login' ? 'CityJobLink' : 'Registration'))}
             </h2>
             <p className="text-gray-500 text-sm mt-1">
-                {isOtpStep ? 'Verify your identity to proceed.' : (mode === 'login' ? 'Access your QCitizen portal.' : "Join the local workforce today.")}
+                {isOtpStep ? 'Verify your identity to proceed.' : (isForgotPasswordMode ? 'Request and verify your password reset code.' : (mode === 'login' ? 'Access your QCitizen portal.' : "Join the local workforce today."))}
             </p>
         </div>
         
@@ -297,104 +399,229 @@ const handleSubmit = async (e) => {
             </form>
         ) : (
             <>
-                {mode === 'register' && (
-                <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
-                    <button type="button" onClick={() => setRole('Seeker')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${role === 'Seeker' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>Job Seeker</button>
-                    <button type="button" onClick={() => setRole('Employer')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${role === 'Employer' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>Employer</button>
-                </div>
-                )}
-                
-                <form onSubmit={handleSubmit} className="space-y-4">
-                {mode === 'register' && role === 'Seeker' && (
+                {isForgotPasswordMode ? (
+                    <form onSubmit={forgotCodeSent ? handleForgotPasswordReset : handleForgotPasswordRequest} className="space-y-4">
+                        <input
+                            required
+                            type="email"
+                            className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                            placeholder="Email (juan@gmail.com)"
+                            value={formData.email}
+                            onChange={e => setFormData({...formData, email: e.target.value})}
+                        />
+
+                        {forgotCodeSent && (
+                            <>
+                                <input
+                                    required
+                                    type="text"
+                                    maxLength="6"
+                                    className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                                    placeholder="6-digit reset code"
+                                    value={formData.resetOtp}
+                                    onChange={e => setFormData({...formData, resetOtp: e.target.value.replace(/[^0-9]/g, '')})}
+                                />
+                                <div className="relative">
+                                    <input
+                                        required
+                                        type={showPassword ? 'text' : 'password'}
+                                        className="w-full p-3 pr-11 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                                        placeholder="New Password (Min. 8 Chars)"
+                                        value={formData.password}
+                                        onChange={e => setFormData({...formData, password: e.target.value})}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute inset-y-0 right-3 flex items-center"
+                                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                    >
+                                        {showPassword ? <EyeOff size={18} className="text-gray-500" /> : <Eye size={18} className="text-gray-500" />}
+                                    </button>
+                                </div>
+                                <div className="relative">
+                                    <input
+                                        required
+                                        type={showConfirmPassword ? 'text' : 'password'}
+                                        className="w-full p-3 pr-11 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                                        placeholder="Confirm New Password"
+                                        value={formData.confirmPassword}
+                                        onChange={e => setFormData({...formData, confirmPassword: e.target.value})}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                        className="absolute inset-y-0 right-3 flex items-center"
+                                        aria-label={showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation'}
+                                    >
+                                        {showConfirmPassword ? <EyeOff size={18} className="text-gray-500" /> : <Eye size={18} className="text-gray-500" />}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+
+                        <button type="submit" disabled={isLoading} className={`w-full text-white font-bold py-3 rounded-xl transition-all mt-4 text-lg shadow-lg flex items-center justify-center gap-2 ${isLoading ? 'bg-gray-400' : 'bg-black hover:bg-gray-800 active:scale-95'}`}>
+                            {isLoading && <Loader2 className="animate-spin" size={20}/>}
+                            {forgotCodeSent ? 'Reset Password' : 'Send Reset Code'}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsForgotPasswordMode(false);
+                                setForgotCodeSent(false);
+                                setFormData({...formData, password: '', confirmPassword: '', resetOtp: ''});
+                                setModal({ type: null });
+                            }}
+                            className="w-full text-gray-500 hover:text-blue-600 text-sm font-semibold transition-colors"
+                        >
+                            Back to Login
+                        </button>
+                    </form>
+                ) : (
                     <>
-                        <div className="space-y-3">
-                            <div className="flex gap-2">
-                                <input required className="flex-1 p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="First Name" value={formData.firstName} onChange={e => setFormData({...formData, firstName: e.target.value})} />
-                                <input className="w-1/3 p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="M.I." maxLength={5} value={formData.middleName} onChange={e => setFormData({...formData, middleName: e.target.value})} />
-                            </div>
-                            <div className="flex gap-2">
-                                <input required className="flex-1 p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Last Name" value={formData.lastName} onChange={e => setFormData({...formData, lastName: e.target.value})} />
-                                <select className="w-1/4 p-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 text-sm" value={formData.suffix} onChange={e => setFormData({...formData, suffix: e.target.value})}><option value="">Suffix</option>{suffixes.map(s => s && <option key={s} value={s}>{s}</option>)}</select>
-                            </div>
+                        {mode === 'register' && (
+                        <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
+                            <button type="button" onClick={() => setRole('Seeker')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${role === 'Seeker' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>Job Seeker</button>
+                            <button type="button" onClick={() => setRole('Employer')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${role === 'Employer' ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>Employer</button>
                         </div>
-
-                        {/* RESIDENCY SWITCHER */}
-                        <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 flex items-center justify-between">
-                            <span className="text-xs font-black text-gray-500 uppercase tracking-wider">Are you a QC Resident?</span>
-                            <div className="flex gap-1 bg-gray-200 p-1 rounded-lg">
-                                <button type="button" onClick={() => setFormData({...formData, isQcResident: true})} className={`px-4 py-1 rounded-md text-[10px] font-black transition-all ${formData.isQcResident ? 'bg-blue-600 text-white shadow' : 'text-gray-500'}`}>YES</button>
-                                <button type="button" onClick={() => setFormData({...formData, isQcResident: false})} className={`px-4 py-1 rounded-md text-[10px] font-black transition-all ${!formData.isQcResident ? 'bg-gray-600 text-white shadow' : 'text-gray-500'}`}>NO</button>
-                            </div>
-                        </div>
-
-                        <div className="pt-1">
-                            <label className="text-xs text-gray-500 font-bold ml-1">Date of Birth (Must be 18+)</label>
-                            <div className="flex gap-2 mt-1">
-                                <select className="flex-1 p-2 border border-gray-300 rounded-lg bg-white text-sm" value={formData.bdayMonth} onChange={e => setFormData({...formData, bdayMonth: e.target.value})}>{months.map(m => <option key={m} value={m}>{m}</option>)}</select>
-                                <select className="flex-1 p-2 border border-gray-300 rounded-lg bg-white text-sm" value={formData.bdayDay} onChange={e => setFormData({...formData, bdayDay: e.target.value})}>{days.map(d => <option key={d} value={d}>{d}</option>)}</select>
-                                <select className="flex-1 p-2 border border-gray-300 rounded-lg bg-white text-sm" value={formData.bdayYear} onChange={e => setFormData({...formData, bdayYear: e.target.value})}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
-                            </div>
-                        </div>
-
-                        <div className="pt-1">
-                            <label className="text-xs text-gray-500 font-bold ml-1">Gender</label>
-                            <select
-                                required
-                                className="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm mt-1"
-                                value={formData.gender}
-                                onChange={e => setFormData({...formData, gender: e.target.value})}
-                            >
-                                <option value="">Select gender</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Binary">Binary</option>
-                            </select>
-                        </div>
+                        )}
                         
-                        {/* ID SECTION */}
-                        <div className={`${formData.isQcResident ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200'} p-4 rounded-xl border-2 border-dashed mt-2`}>
-                            <label className={`text-[10px] font-black uppercase mb-2 flex items-center gap-1 ${formData.isQcResident ? 'text-blue-700' : 'text-orange-700'}`}>
-                                <CreditCard size={14}/> {formData.isQcResident ? 'Priority QC Verification' : 'Standard ID Verification'}
-                            </label>
-                            <input required className="w-full p-2 bg-white border border-gray-300 rounded-lg text-sm mb-2" placeholder={formData.isQcResident ? "QC ID Number" : "Valid ID Number (Barangay/Passport)"} value={formData.qcId} onChange={e => setFormData({...formData, qcId: e.target.value})} />
-                            <input type="file" ref={qcIdInputRef} onChange={handleQcIdChange} className="hidden" accept="image/*,application/pdf" />
-                            <div onClick={() => qcIdInputRef.current.click()} className="w-full p-2 bg-white border border-gray-300 rounded-lg text-[10px] cursor-pointer hover:bg-gray-50 flex items-center justify-center gap-2 text-gray-500 font-bold">
-                                {formData.qcIdFile ? <><FileCheck className="text-green-600" size={14}/> {formData.qcIdFile.name}</> : <><UploadCloud size={14}/> Upload ID Document</>}
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                        {mode === 'register' && role === 'Seeker' && (
+                            <>
+                                <div className="space-y-3">
+                                    <div className="flex gap-2">
+                                        <input required className="flex-1 p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="First Name" value={formData.firstName} onChange={e => setFormData({...formData, firstName: e.target.value})} />
+                                        <input className="w-1/3 p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="M.I." maxLength={5} value={formData.middleName} onChange={e => setFormData({...formData, middleName: e.target.value})} />
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input required className="flex-1 p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Last Name" value={formData.lastName} onChange={e => setFormData({...formData, lastName: e.target.value})} />
+                                        <select className="w-1/4 p-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 text-sm" value={formData.suffix} onChange={e => setFormData({...formData, suffix: e.target.value})}><option value="">Suffix</option>{suffixes.map(s => s && <option key={s} value={s}>{s}</option>)}</select>
+                                    </div>
+                                </div>
+
+                                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 flex items-center justify-between">
+                                    <span className="text-xs font-black text-gray-500 uppercase tracking-wider">Are you a QC Resident?</span>
+                                    <div className="flex gap-1 bg-gray-200 p-1 rounded-lg">
+                                        <button type="button" onClick={() => setFormData({...formData, isQcResident: true})} className={`px-4 py-1 rounded-md text-[10px] font-black transition-all ${formData.isQcResident ? 'bg-blue-600 text-white shadow' : 'text-gray-500'}`}>YES</button>
+                                        <button type="button" onClick={() => setFormData({...formData, isQcResident: false})} className={`px-4 py-1 rounded-md text-[10px] font-black transition-all ${!formData.isQcResident ? 'bg-gray-600 text-white shadow' : 'text-gray-500'}`}>NO</button>
+                                    </div>
+                                </div>
+
+                                <div className="pt-1">
+                                    <label className="text-xs text-gray-500 font-bold ml-1">Date of Birth (Must be 18+)</label>
+                                    <div className="flex gap-2 mt-1">
+                                        <select className="flex-1 p-2 border border-gray-300 rounded-lg bg-white text-sm" value={formData.bdayMonth} onChange={e => setFormData({...formData, bdayMonth: e.target.value})}>{months.map(m => <option key={m} value={m}>{m}</option>)}</select>
+                                        <select className="flex-1 p-2 border border-gray-300 rounded-lg bg-white text-sm" value={formData.bdayDay} onChange={e => setFormData({...formData, bdayDay: e.target.value})}>{days.map(d => <option key={d} value={d}>{d}</option>)}</select>
+                                        <select className="flex-1 p-2 border border-gray-300 rounded-lg bg-white text-sm" value={formData.bdayYear} onChange={e => setFormData({...formData, bdayYear: e.target.value})}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
+                                    </div>
+                                </div>
+
+                                <div className="pt-1">
+                                    <label className="text-xs text-gray-500 font-bold ml-1">Gender</label>
+                                    <select
+                                        required
+                                        className="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm mt-1"
+                                        value={formData.gender}
+                                        onChange={e => setFormData({...formData, gender: e.target.value})}
+                                    >
+                                        <option value="">Select gender</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                        <option value="Binary">Binary</option>
+                                    </select>
+                                </div>
+                                
+                                <div className={`${formData.isQcResident ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200'} p-4 rounded-xl border-2 border-dashed mt-2`}>
+                                    <label className={`text-[10px] font-black uppercase mb-2 flex items-center gap-1 ${formData.isQcResident ? 'text-blue-700' : 'text-orange-700'}`}>
+                                        <CreditCard size={14}/> {formData.isQcResident ? 'Priority QC Verification' : 'Standard ID Verification'}
+                                    </label>
+                                    <input required className="w-full p-2 bg-white border border-gray-300 rounded-lg text-sm mb-2" placeholder={formData.isQcResident ? "QC ID Number" : "Valid ID Number (Barangay/Passport)"} value={formData.qcId} onChange={e => setFormData({...formData, qcId: e.target.value})} />
+                                    <input type="file" ref={qcIdInputRef} onChange={handleQcIdChange} className="hidden" accept="image/*,application/pdf" />
+                                    <div onClick={() => qcIdInputRef.current.click()} className="w-full p-2 bg-white border border-gray-300 rounded-lg text-[10px] cursor-pointer hover:bg-gray-50 flex items-center justify-center gap-2 text-gray-500 font-bold">
+                                        {formData.qcIdFile ? <><FileCheck className="text-green-600" size={14}/> {formData.qcIdFile.name}</> : <><UploadCloud size={14}/> Upload ID Document</>}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {mode === 'register' && role === 'Employer' && (
+                            <div className="space-y-3">
+                                <input required className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="Company Name" value={formData.companyName} onChange={e => setFormData({...formData, companyName: e.target.value})} />
+                                <select className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 text-sm" value={formData.industry} onChange={e => setFormData({...formData, industry: e.target.value})}>
+                                    <option value="">Select Industry</option>
+                                    <option>BPO / Call Center</option>
+                                    <option>IT & Software</option>
+                                    <option>Healthcare</option>
+                                    <option>Construction</option>
+                                    <option>Finance</option>
+                                    <option>Retail & Sales</option>
+                                    <option>Manufacturing</option>
+                                </select>
+                                <input required className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="Business Address" value={formData.companyAddress} onChange={e => setFormData({...formData, companyAddress: e.target.value})} />
                             </div>
+                        )}
+                        
+                        <input required type="email" className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Email (juan@gmail.com)" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                        <div className="relative">
+                            <input required type={showPassword ? 'text' : 'password'} className="w-full p-3 pr-11 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Password (Min. 8 Chars)" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute inset-y-0 right-3 flex items-center"
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                            >
+                                {showPassword ? <EyeOff size={18} className="text-gray-500" /> : <Eye size={18} className="text-gray-500" />}
+                            </button>
                         </div>
+                        {mode === 'register' && (
+                            <div className="relative">
+                                <input required type={showConfirmPassword ? 'text' : 'password'} className="w-full p-3 pr-11 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Confirm Password" value={formData.confirmPassword} onChange={e => setFormData({...formData, confirmPassword: e.target.value})} />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                    className="absolute inset-y-0 right-3 flex items-center"
+                                    aria-label={showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation'}
+                                >
+                                    {showConfirmPassword ? <EyeOff size={18} className="text-gray-500" /> : <Eye size={18} className="text-gray-500" />}
+                                </button>
+                            </div>
+                        )}
+
+                        {mode === 'login' && (
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsForgotPasswordMode(true);
+                                        setForgotCodeSent(false);
+                                        setFormData({...formData, password: '', confirmPassword: '', resetOtp: ''});
+                                        setModal({ type: null });
+                                    }}
+                                    className="text-sm font-semibold text-blue-600 hover:underline"
+                                >
+                                    Forgot password?
+                                </button>
+                            </div>
+                        )}
+
+                        <button type="submit" disabled={isLoading} className={`w-full text-white font-bold py-3 rounded-xl transition-all mt-4 text-lg shadow-lg flex items-center justify-center gap-2 ${isLoading ? 'bg-gray-400' : 'bg-black hover:bg-gray-800 active:scale-95'}`}>
+                            {isLoading && <Loader2 className="animate-spin" size={20}/>}
+                            {mode === 'login' ? 'Log In' : 'Create Account'}
+                        </button>
+                        </form>
                     </>
                 )}
-
-                {/* EMPLOYER SECTION */}
-                {mode === 'register' && role === 'Employer' && (
-                    <div className="space-y-3">
-                        <input required className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="Company Name" value={formData.companyName} onChange={e => setFormData({...formData, companyName: e.target.value})} />
-                        {/* ✅ FIXED: Ginawa nating kumpleto ang dropdown options para magtugma sa Dashboard */}
-                        <select className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 text-sm" value={formData.industry} onChange={e => setFormData({...formData, industry: e.target.value})}>
-                            <option value="">Select Industry</option>
-                            <option>BPO / Call Center</option>
-                            <option>IT & Software</option>
-                            <option>Healthcare</option>
-                            <option>Construction</option>
-                            <option>Finance</option>
-                            <option>Retail & Sales</option>
-                            <option>Manufacturing</option>
-                        </select>
-                        <input required className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="Business Address" value={formData.companyAddress} onChange={e => setFormData({...formData, companyAddress: e.target.value})} />
-                    </div>
-                )}
-                
-                <input required type="email" className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Email (juan@gmail.com)" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                <input required type="password" className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Password (Min. 8 Chars)" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
-
-                <button type="submit" disabled={isLoading} className={`w-full text-white font-bold py-3 rounded-xl transition-all mt-4 text-lg shadow-lg flex items-center justify-center gap-2 ${isLoading ? 'bg-gray-400' : 'bg-black hover:bg-gray-800 active:scale-95'}`}>
-                    {isLoading && <Loader2 className="animate-spin" size={20}/>}
-                    {mode === 'login' ? 'Log In' : 'Create Account'}
-                </button>
-                </form>
                 
                 <div className="mt-6 text-center border-t pt-6">
-                    <button type="button" onClick={() => {setMode(mode === 'login' ? 'register' : 'login'); setModal({type: null})}} className="text-blue-600 font-bold hover:underline text-sm transition-all">
+                    <button type="button" onClick={() => {
+                        setMode(mode === 'login' ? 'register' : 'login');
+                        setIsForgotPasswordMode(false);
+                        setForgotCodeSent(false);
+                        setFormData({...formData, password: '', confirmPassword: '', resetOtp: ''});
+                        setModal({type: null});
+                    }} className="text-blue-600 font-bold hover:underline text-sm transition-all">
                         {mode === 'login' ? "New here? Register now." : "Already have an account? Login here."}
                     </button>
                 </div>
@@ -406,3 +633,4 @@ const handleSubmit = async (e) => {
 };
 
 export default Login;
+

@@ -7,6 +7,7 @@ import {
     CreditCard, Calendar, Smile, Mail, BookOpen, Star, Filter, TrendingUp,
     Target, ArrowRight
 } from 'lucide-react';
+import { API_BASE, buildBackendUrl } from '../lib/apiBase';
 
 const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, onUpdateJob, onUpdateProfile, onUploadDocs, onOpenChat, onUpdateStatus }) => {
     const [activeTab, setActiveTab] = useState('overview');
@@ -120,7 +121,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                 companyWebsite: editProfileData.companyWebsite
             };
 
-            const response = await fetch('http://localhost:8000/api/employer/update-profile', {
+            const response = await fetch(`${API_BASE}/employer/update-profile`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -575,6 +576,11 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                                     {app.matchReasons && (
                                                                         <p className="text-[10px] text-gray-500 mt-1 max-w-[180px] truncate" title={app.matchReasons}>{app.matchReasons}</p>
                                                                     )}
+                                                                    {isWithdrawn && app.rejectionReason && (
+                                                                        <p className="text-[10px] text-red-600 mt-1 max-w-[220px] truncate" title={`Withdrawal reason: ${app.rejectionReason}`}>
+                                                                            Withdrawal reason: {app.rejectionReason}
+                                                                        </p>
+                                                                    )}
                                                                 </div>
 
                                                                 {/* ✅ ADDED: Message Icon Button */}
@@ -752,7 +758,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                         <div className="p-6 flex justify-end gap-3 border-t bg-white">
                             {viewApplicant.resume_path ? (
                                 <button
-                                    onClick={() => window.open(`http://localhost:8000/${viewApplicant.resume_path}`, '_blank')}
+                                    onClick={() => window.open(buildBackendUrl(viewApplicant.resume_path), '_blank')}
                                     className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 shadow-md transition-all"
                                 >
                                     <Download size={18} /> Download PDF
@@ -786,3 +792,4 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
 };
 
 export default EmployerDashboard;
+

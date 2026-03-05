@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import 'sweetalert2/dist/sweetalert2.min.css';
+import { API_BASE } from '../lib/apiBase';
 
 // =====================================================
 // 1. COMPONENT: APPLICATION PROGRESS STEPPER
@@ -311,7 +312,7 @@ export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplic
     setReason("");
   };
 
-  const handleConfirmWithdrawal = () => {
+  const handleConfirmWithdrawal = async () => {
     if (!reason.trim()) {
       Swal.fire({
         icon: 'warning',
@@ -326,7 +327,10 @@ export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplic
       return;
     }
 
-    onCancelApplication(withdrawModal.appId, reason);
+    const success = await onCancelApplication(withdrawModal.appId, reason.trim());
+    if (!success) {
+      return;
+    }
 
     Swal.fire({
       icon: 'success',
@@ -421,6 +425,11 @@ export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplic
                     <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
                       <Clock size={14}/> Applied: {app.date}
                     </span>
+                    {app.rejectionReason && (
+                      <p className="mt-3 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg p-3">
+                        Withdrawal reason: {app.rejectionReason}
+                      </p>
+                    )}
                   </div>
                 </div>
               );
@@ -640,7 +649,7 @@ const toastMsg = (title, icon = 'success') => {
   });
 };
 
-const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], initialTab, onCancelApplication, onViewJob, onNavigate, onUpdateProfile }) => {
+const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], initialTab, onCancelApplication, onViewJob, onNavigate, onUpdateProfile, onWithdrawTraining }) => {
   const [activeTab, setActiveTab] = useState(initialTab || 'overview');
   const [resumeFile, setResumeFile] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
@@ -689,9 +698,16 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
   };
 
   // Confirm withdrawal
-  const handleConfirmWithdrawal = () => {
+  const handleConfirmWithdrawal = async () => {
     if (withdrawModal.type === 'training') {
-        toastMsg("Training withdrawn successfully.");
+        if (typeof onWithdrawTraining === 'function') {
+          const ok = await onWithdrawTraining(withdrawModal.id);
+          if (!ok) {
+            return;
+          }
+        } else {
+          toastMsg("Training withdrawn successfully.");
+        }
     } else if (withdrawModal.type === 'jobfair') {
         toastMsg("Job Fair withdrawn successfully.");
     }
@@ -715,7 +731,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
     formData.append('email', userEmail);
 
     try {
-      const response = await fetch('http://localhost:8000/api/upload/resume', {
+      const response = await fetch(`${API_BASE}/upload/resume`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json'
@@ -752,7 +768,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/upload/resume', {
+      const response = await fetch(`${API_BASE}/upload/resume`, {
         method: 'DELETE',
         headers: {
           'Accept': 'application/json',
@@ -843,11 +859,6 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">ID Number</p>
                   <p className="text-sm font-medium text-gray-900 font-mono">{profile?.qc_id || "None"}</p>
-                </div>
-
-                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 md:col-span-2">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Home Address</p>
-                  <p className="text-sm font-medium text-gray-900">{profile?.address || "No address on file"}</p>
                 </div>
               </div>
               
@@ -956,3 +967,4 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
 };
 
 export default SeekerDashboard;
+
