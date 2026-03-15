@@ -33,6 +33,19 @@ class User extends Authenticatable
         'is_verified',
         'uploaded_docs',
         'verification_doc_path',
+        'seeker_id_doc_path',
+        'seeker_id_doc_original_name',
+        'seeker_id_doc_stored_name',
+        'id_verification_status',
+        'id_verification_reason',
+        'id_verification_confidence',
+        'id_verification_provider',
+        'id_verification_reference',
+        'id_verification_checked_at',
+        'id_extracted_qc_id',
+        'id_extracted_name',
+        'id_ocr_text',
+        'is_priority_verified',
         'resume_path',
         'resume_original_name',
         'resume_stored_name',
@@ -43,6 +56,11 @@ class User extends Authenticatable
         'address',
         'contact_number',
         'company_website',
+        'portfolio_url',
+        'linkedin_url',
+        'github_url',
+        'facebook_url',
+        'instagram_url',
     ];
 
     /**
@@ -68,6 +86,9 @@ class User extends Authenticatable
             'is_verified' => 'boolean',
             'uploaded_docs' => 'boolean',
             'is_qc_resident' => 'boolean',
+            'is_priority_verified' => 'boolean',
+            'id_verification_confidence' => 'float',
+            'id_verification_checked_at' => 'datetime',
             'parsed_skill' => 'array',
         ];
     }

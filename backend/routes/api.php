@@ -15,6 +15,8 @@ Route::post('/forgot-password/reset', [AuthController::class, 'resetPasswordWith
 Route::post('/upload/resume', [AuthController::class, 'uploadResume']);
 Route::delete('/upload/resume', [AuthController::class, 'deleteResume']);
 Route::post('/upload/employer-documents', [AuthController::class, 'uploadEmployerDocuments']);
+Route::post('/upload/seeker-id-document', [AuthController::class, 'uploadSeekerIdDocument']);
+Route::post('/webhooks/seeker-id-verification-result', [AuthController::class, 'handleSeekerIdVerificationWebhook']);
 
 // --- Job Routes ---
 Route::get('/jobs', [FeatureController::class, 'jobs']);
@@ -25,6 +27,7 @@ Route::delete('/jobs/{id}', [FeatureController::class, 'deleteJob']); // Bonus: 
 
 // --- Application Routes ---
 Route::get('/seeker/profile', [FeatureController::class, 'seekerProfile']);
+Route::post('/seeker/update-profile', [FeatureController::class, 'updateSeekerProfile']);
 Route::get('/seeker/recommendations', [FeatureController::class, 'seekerRecommendations']);
 Route::post('/applications/apply', [FeatureController::class, 'applyJob']);
 Route::patch('/applications/withdraw', [FeatureController::class, 'withdrawApplication']);

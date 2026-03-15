@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use App\Models\User;
-use App\Models\JobCatalog;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -54,48 +53,109 @@ class EmployerController extends Controller
 
     public function storeJob(Request $request)
     {
-        // 1. Validate incoming request
         $validated = $request->validate([
-            'title' => 'required|string',
-            'description' => 'required|string',
-            'required_skills' => 'required|array',
-            'educational_attainment_required' => 'nullable|string',
+            'email' => ['nullable', 'email'],
+            'employer_id' => ['nullable', 'integer', 'exists:users,id'],
+            'title' => ['required', 'string', 'max:255'],
+            'location' => ['nullable', 'string', 'max:255'],
+            'company' => ['nullable', 'string', 'max:255'],
+            'employment_type' => ['nullable', 'string', 'max:100'],
+            'industry' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'required_skills' => ['required', 'array'],
+            'required_skills.*' => ['string', 'max:100'],
+            'salary_min' => ['nullable', 'integer', 'min:0'],
+            'salary_max' => ['nullable', 'integer', 'min:0'],
+            'educational_attainment_required' => ['nullable', 'string', 'max:255'],
         ]);
 
-        // 2. SAVE THE JOB (No more mocking!)
-        $job = JobCatalog::create([
-            'title'           => $validated['title'],
-            'description'     => $validated['description'],
-            'required_skills' => $validated['required_skills'],
-            'educational_attainment_required' => $request->educational_attainment_required ?? 'Not Specified',
-            'status'          => 'active',
+        if (empty($validated['email']) && empty($validated['employer_id'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Either email or employer_id is required.',
+            ], 422);
+        }
+
+        if (isset($validated['salary_min'], $validated['salary_max']) && (int) $validated['salary_max'] < (int) $validated['salary_min']) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Maximum salary must be greater than or equal to minimum salary.',
+            ], 422);
+        }
+
+        $employerQuery = User::query();
+        if (!empty($validated['employer_id'])) {
+            $employerQuery->where('id', $validated['employer_id']);
+        } else {
+            $employerQuery->where('email', $validated['email']);
+        }
+
+        $employer = $employerQuery->first();
+        if (!$employer) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Employer not found.',
+            ], 404);
+        }
+
+        if (($employer->role ?? '') !== 'Employer') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Only employer accounts can post jobs.',
+            ], 422);
+        }
+
+        if (!$employer->is_verified) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Employer account must be verified before posting jobs.',
+            ], 403);
+        }
+
+        $jobId = DB::table('jobs_catalog')->insertGetId([
+            'employer_id' => $employer->id,
+            'title' => $validated['title'],
+            'company' => $validated['company'] ?? ($employer->company_name ?: $employer->name),
+            'location' => $validated['location'] ?? ($employer->address ?: 'Unspecified'),
+            'salary_min' => $validated['salary_min'] ?? null,
+            'salary_max' => $validated['salary_max'] ?? null,
+            'employment_type' => $validated['employment_type'] ?? 'Full-time',
+            'industry' => $validated['industry'] ?? $employer->industry,
+            'required_skills' => json_encode($validated['required_skills']),
+            'description' => $validated['description'] ?? null,
+            'educational_attainment_required' => $validated['educational_attainment_required'] ?? 'Not Specified',
+            'status' => 'Open',
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
-        // 3. Trigger n8n with the REAL ID and Basic Auth
+        $job = DB::table('jobs_catalog')->where('id', $jobId)->first();
+
         $webhookUrl = config('services.n8n.match_webhook_url');
-        
         if ($webhookUrl) {
             try {
-                $request = Http::timeout((int) config('services.n8n.timeout_seconds', 10));
+                $httpRequest = Http::timeout((int) config('services.n8n.timeout_seconds', 10));
 
                 $authUser = config('services.n8n.basic_auth_user');
                 $authPassword = config('services.n8n.basic_auth_password');
 
                 if ($authUser !== null && $authPassword !== null && $authUser !== '' && $authPassword !== '') {
-                    $request = $request->withBasicAuth((string) $authUser, (string) $authPassword);
+                    $httpRequest = $httpRequest->withBasicAuth((string) $authUser, (string) $authPassword);
                 }
 
-                $skillsRequired = is_array($job->required_skills)
-                    ? $job->required_skills
-                    : (json_decode((string) ($job->required_skills ?? '[]'), true) ?: []);
+                $skillsRequired = json_decode((string) ($job->required_skills ?? '[]'), true) ?: [];
 
-                $response = $request->post($webhookUrl, [
-                    'event'                           => 'job_created',
-                    'job_id'                          => $job->id,
-                    'title'                           => $job->title,
-                    'description'                     => $job->description,
-                    'skills_required'                 => $skillsRequired,
-                    'required_skills'                 => $skillsRequired,
+                $response = $httpRequest->post($webhookUrl, [
+                    'event' => 'job_created',
+                    'job_id' => $job->id,
+                    'title' => $job->title,
+                    'company' => $job->company,
+                    'location' => $job->location,
+                    'employment_type' => $job->employment_type,
+                    'industry' => $job->industry,
+                    'description' => $job->description,
+                    'skills_required' => $skillsRequired,
+                    'required_skills' => $skillsRequired,
                     'educational_attainment_required' => $job->educational_attainment_required,
                 ]);
 
@@ -111,14 +171,14 @@ class EmployerController extends Controller
                     ]);
                 }
             } catch (\Throwable $e) {
-                Log::error("n8n connection failed: " . $e->getMessage());
+                Log::error("n8n connection failed: {$e->getMessage()}");
             }
         }
 
         return response()->json([
             'status' => 'success',
             'message' => 'Job posted successfully! Match results will appear shortly.',
-            'job' => $job
+            'job' => $job,
         ], 201);
     }
 }

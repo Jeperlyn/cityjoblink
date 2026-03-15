@@ -30,6 +30,46 @@ class FeatureController extends Controller
         ]);
     }
 
+    public function updateSeekerProfile(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+            'portfolio_url' => ['nullable', 'url', 'max:255'],
+            'linkedin_url' => ['nullable', 'url', 'max:255'],
+            'github_url' => ['nullable', 'url', 'max:255'],
+            'facebook_url' => ['nullable', 'url', 'max:255'],
+            'instagram_url' => ['nullable', 'url', 'max:255'],
+        ]);
+
+        $seeker = User::where('email', $validated['email'])->first();
+        if (!$seeker || ($seeker->role ?? '') !== 'Seeker') {
+            return response()->json(['status' => 'error', 'message' => 'Seeker not found.'], 404);
+        }
+
+        $normalizeUrl = static function ($value): ?string {
+            if (!is_string($value)) {
+                return null;
+            }
+
+            $trimmed = trim($value);
+            return $trimmed === '' ? null : $trimmed;
+        };
+
+        $seeker->update([
+            'portfolio_url' => $normalizeUrl($request->input('portfolio_url')),
+            'linkedin_url' => $normalizeUrl($request->input('linkedin_url')),
+            'github_url' => $normalizeUrl($request->input('github_url')),
+            'facebook_url' => $normalizeUrl($request->input('facebook_url')),
+            'instagram_url' => $normalizeUrl($request->input('instagram_url')),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Seeker profile updated successfully.',
+            'user' => $seeker->fresh(),
+        ]);
+    }
+
     public function applyJob(Request $request)
     {
         $request->validate([
@@ -230,34 +270,41 @@ class FeatureController extends Controller
 
     public function jobs(Request $request)
     {
-        $query = DB::table('jobs_catalog');
+        $query = DB::table('jobs_catalog as j')
+            ->leftJoin('users as e', 'e.id', '=', 'j.employer_id');
 
         if (!$request->boolean('include_closed')) {
-            $query->where('status', 'Open');
+            $query->where('j.status', 'Open');
         }
 
         if ($request->filled('q')) {
             $keyword = $request->string('q')->toString();
             $query->where(function ($inner) use ($keyword) {
-                $inner->where('title', 'ilike', '%' . $keyword . '%')
-                    ->orWhere('company', 'ilike', '%' . $keyword . '%')
-                    ->orWhere('description', 'ilike', '%' . $keyword . '%');
+                $inner->where('j.title', 'ilike', '%' . $keyword . '%')
+                    ->orWhere('j.company', 'ilike', '%' . $keyword . '%')
+                    ->orWhere('j.description', 'ilike', '%' . $keyword . '%');
             });
         }
 
         if ($request->filled('location')) {
-            $query->where('location', $request->string('location')->toString());
+            $query->where('j.location', $request->string('location')->toString());
         }
 
         if ($request->filled('employment_type')) {
-            $query->where('employment_type', $request->string('employment_type')->toString());
+            $query->where('j.employment_type', $request->string('employment_type')->toString());
         }
 
         if ($request->filled('industry')) {
-            $query->where('industry', $request->string('industry')->toString());
+            $query->where('j.industry', $request->string('industry')->toString());
         }
 
-        $jobs = $query->orderByDesc('created_at')->get();
+        $jobs = $query
+            ->orderByDesc('j.created_at')
+            ->select([
+                'j.*',
+                'e.company_website as employer_company_website',
+            ])
+            ->get();
 
         return response()->json([
             'status' => 'success',
@@ -803,6 +850,7 @@ class FeatureController extends Controller
                 $join->on('latest.job_id', '=', 'j.id');
             })
             ->join('job_matches as jm', 'jm.id', '=', 'latest.latest_id')
+            ->leftJoin('users as e', 'e.id', '=', 'j.employer_id')
             ->where('j.status', 'Open')
             ->where('jm.match_score', '>=', $minScore)
             ->orderByDesc('jm.match_score')
@@ -822,6 +870,7 @@ class FeatureController extends Controller
                 'j.educational_attainment_required',
                 'j.status',
                 'j.created_at',
+                'e.company_website as employer_company_website',
                 'jm.match_score',
                 'jm.match_reasons',
             ])
@@ -894,6 +943,11 @@ class FeatureController extends Controller
                 's.resume_text as seeker_resume_text',
                 's.parsed_skill as seeker_parsed_skill',
                 's.educational_attainment as seeker_educational_attainment',
+                's.portfolio_url as seeker_portfolio_url',
+                's.linkedin_url as seeker_linkedin_url',
+                's.github_url as seeker_github_url',
+                's.facebook_url as seeker_facebook_url',
+                's.instagram_url as seeker_instagram_url',
                 'jm.match_score as n8n_match_score',
                 'jm.match_reasons as n8n_match_reasons',
             ])

@@ -21,6 +21,9 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         try {
+            $role = (string) ($request->input('role') ?? 'Seeker');
+            $isSeeker = $role === 'Seeker';
+
             $request->validate([
                 'email' => ['required', 'email'],
                 'password' => ['required', 'string', 'min:8', 'confirmed'],
@@ -28,6 +31,17 @@ class AuthController extends Controller
                 'firstName' => ['nullable', 'string', 'max:100'],
                 'lastName' => ['nullable', 'string', 'max:100'],
                 'companyName' => ['nullable', 'string', 'max:255'],
+                'industry' => ['nullable', 'string', 'max:255'],
+                'companyAddress' => ['nullable', 'string', 'max:255'],
+                'qcId' => $isSeeker ? ['required', 'string', 'max:100'] : ['nullable', 'string', 'max:100'],
+                'isQcResident' => ['nullable', 'boolean'],
+                'bdayMonth' => ['nullable', 'string', 'max:20'],
+                'bdayDay' => ['nullable', 'string', 'max:2'],
+                'bdayYear' => ['nullable', 'string', 'max:4'],
+                'gender' => ['nullable', 'string', 'max:50'],
+                'qcIdFile' => $isSeeker
+                    ? ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240']
+                    : ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
             ]);
 
             $role = $request->role ?? 'Seeker';
@@ -56,6 +70,11 @@ class AuthController extends Controller
                 ], 422);
             }
 
+            $pendingSeekerIdDocument = null;
+            if ($role === 'Seeker' && $request->hasFile('qcIdFile')) {
+                $pendingSeekerIdDocument = $this->storePendingSeekerIdDocument($request->file('qcIdFile'));
+            }
+
             $cacheKey = 'pending_registration_' . strtolower((string) $request->email);
             Cache::put($cacheKey, [
                 'name' => $resolvedName,
@@ -73,6 +92,11 @@ class AuthController extends Controller
                 // ✅ FIXED: Idinagdag sa Cache para hindi makalimutan bago ang OTP verification
                 'industry' => $role === 'Employer' ? $request->industry : null,
                 'address' => $role === 'Employer' ? $request->companyAddress : null,
+                'seeker_id_doc_path' => $pendingSeekerIdDocument['path'] ?? null,
+                'seeker_id_doc_original_name' => $pendingSeekerIdDocument['original_name'] ?? null,
+                'seeker_id_doc_stored_name' => $pendingSeekerIdDocument['stored_name'] ?? null,
+                'id_verification_status' => ($role === 'Seeker' && $pendingSeekerIdDocument) ? 'pending' : 'not_submitted',
+                'is_priority_verified' => false,
             ], now()->addMinutes(10));
 
             $mailDelivered = true;
@@ -295,6 +319,9 @@ class AuthController extends Controller
                 return response()->json(['status' => 'error', 'message' => 'Email is already registered. Please login instead.'], 409);
             }
 
+            $isSeekerRole = ($pendingRegistration['role'] ?? 'Seeker') === 'Seeker';
+            $hasSeekerIdDocument = !empty($pendingRegistration['seeker_id_doc_path']);
+
             $user = User::create([
                 'name' => $pendingRegistration['name'],
                 'company_name' => $pendingRegistration['company_name'],
@@ -309,14 +336,29 @@ class AuthController extends Controller
                 'password' => $pendingRegistration['password'],
                 'otp' => null,
                 'is_verified' => ($pendingRegistration['role'] ?? 'Seeker') === 'Employer' ? false : true,
-                'uploaded_docs' => false,
+                'uploaded_docs' => $hasSeekerIdDocument,
                 // ✅ FIXED: Ipapasok na sa Database mula sa Cache
                 'industry' => $pendingRegistration['industry'] ?? null,
                 'address' => $pendingRegistration['address'] ?? null,
+                'seeker_id_doc_path' => $pendingRegistration['seeker_id_doc_path'] ?? null,
+                'seeker_id_doc_original_name' => $pendingRegistration['seeker_id_doc_original_name'] ?? null,
+                'seeker_id_doc_stored_name' => $pendingRegistration['seeker_id_doc_stored_name'] ?? null,
+                'id_verification_status' => $isSeekerRole && $hasSeekerIdDocument
+                    ? ($pendingRegistration['id_verification_status'] ?? 'pending')
+                    : 'not_submitted',
+                'is_priority_verified' => false,
             ]);
 
-            if (($pendingRegistration['role'] ?? 'Seeker') === 'Seeker') {
+            if ($isSeekerRole && $hasSeekerIdDocument) {
+                $this->moveSeekerIdDocumentToUserFolder($user);
+            }
+
+            if ($isSeekerRole) {
                 $this->triggerN8nSeekerRegistered($user);
+
+                if (!empty($user->seeker_id_doc_path)) {
+                    $this->triggerN8nSeekerIdVerification($user);
+                }
             }
 
             Cache::forget($cacheKey);
@@ -488,6 +530,166 @@ class AuthController extends Controller
         }
     }
 
+    public function uploadSeekerIdDocument(Request $request)
+    {
+        try {
+            $request->validate([
+                'email' => ['required', 'email'],
+                'document' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+                'qc_id' => ['nullable', 'string', 'max:100'],
+            ]);
+
+            $user = User::where('email', $request->email)->first();
+
+            if (!$user) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User not found.',
+                ], 404);
+            }
+
+            if (($user->role ?? '') !== 'Seeker') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Only seeker accounts can upload QC/ID verification documents.',
+                ], 422);
+            }
+
+            if (!empty($user->seeker_id_doc_path)) {
+                $oldPath = str_replace('storage/', '', (string) $user->seeker_id_doc_path);
+                if (Storage::disk('public')->exists($oldPath)) {
+                    Storage::disk('public')->delete($oldPath);
+                }
+            }
+
+            $storedDocument = $this->storeSeekerIdDocumentForUser($user, $request->file('document'));
+
+            if ($request->filled('qc_id')) {
+                $user->qc_id = trim((string) $request->qc_id);
+            }
+
+            $user->seeker_id_doc_path = $storedDocument['path'];
+            $user->seeker_id_doc_original_name = $storedDocument['original_name'];
+            $user->seeker_id_doc_stored_name = $storedDocument['stored_name'];
+            $user->id_verification_status = 'pending';
+            $user->id_verification_reason = null;
+            $user->id_verification_confidence = null;
+            $user->id_verification_provider = null;
+            $user->id_verification_reference = null;
+            $user->id_verification_checked_at = null;
+            $user->id_extracted_qc_id = null;
+            $user->id_extracted_name = null;
+            $user->id_ocr_text = null;
+            $user->is_priority_verified = false;
+            $user->uploaded_docs = true;
+            $user->save();
+
+            $this->triggerN8nSeekerIdVerification($user);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'ID document uploaded. Automated verification is now in progress.',
+                'user' => $user,
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->validator->errors()->first() ?: 'Validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Seeker ID upload failed.', [
+                'email' => $request->email,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to upload ID document. Please try again.',
+            ], 500);
+        }
+    }
+
+    public function handleSeekerIdVerificationWebhook(Request $request)
+    {
+        try {
+            $expectedSecret = trim((string) config('services.n8n.seeker_id_verification_callback_secret', ''));
+
+            if ($expectedSecret !== '') {
+                $incomingSecret = trim((string) $request->header('X-CityJobLink-Webhook-Secret', ''));
+
+                if ($incomingSecret === '' || !hash_equals($expectedSecret, $incomingSecret)) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Unauthorized webhook signature.',
+                    ], 401);
+                }
+            }
+
+            $validated = $request->validate([
+                'user_id' => ['required', 'integer', 'exists:users,id'],
+                'status' => ['required', 'in:pending,verified,rejected,manual_review,error'],
+                'reason' => ['nullable', 'string', 'max:2000'],
+                'confidence' => ['nullable', 'numeric', 'between:0,1'],
+                'provider' => ['nullable', 'string', 'max:100'],
+                'reference_id' => ['nullable', 'string', 'max:191'],
+                'extracted_qc_id' => ['nullable', 'string', 'max:100'],
+                'extracted_name' => ['nullable', 'string', 'max:255'],
+                'ocr_text' => ['nullable', 'string'],
+            ]);
+
+            $user = User::find((int) $validated['user_id']);
+            if (!$user || ($user->role ?? '') !== 'Seeker') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Seeker account not found.',
+                ], 404);
+            }
+
+            $status = (string) $validated['status'];
+            $reason = isset($validated['reason']) ? trim((string) $validated['reason']) : null;
+
+            $user->id_verification_status = $status;
+            $user->id_verification_reason = $reason ?: null;
+            $user->id_verification_confidence = array_key_exists('confidence', $validated)
+                ? (float) $validated['confidence']
+                : null;
+            $user->id_verification_provider = $validated['provider'] ?? null;
+            $user->id_verification_reference = $validated['reference_id'] ?? null;
+            $user->id_verification_checked_at = now();
+            $user->id_extracted_qc_id = $validated['extracted_qc_id'] ?? null;
+            $user->id_extracted_name = $validated['extracted_name'] ?? null;
+            $user->id_ocr_text = $validated['ocr_text'] ?? null;
+            $user->is_priority_verified = $status === 'verified';
+            $user->save();
+
+            $this->storeIdVerificationNotification($user, $status, $reason ?: null);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'ID verification webhook processed.',
+                'user_id' => $user->id,
+                'verification_status' => $user->id_verification_status,
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->validator->errors()->first() ?: 'Validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Failed handling seeker ID verification webhook.', [
+                'error' => $e->getMessage(),
+                'payload' => $request->all(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to process verification callback.',
+            ], 500);
+        }
+    }
+
     public function deleteResume(Request $request)
     {
         try {
@@ -517,7 +719,7 @@ class AuthController extends Controller
             $user->resume_text = null;
             $user->parsed_skill = null;
             $user->educational_attainment = null;
-            $user->uploaded_docs = false;
+            $user->uploaded_docs = !empty($user->seeker_id_doc_path);
             $user->save();
 
             DB::table('job_matches')
@@ -614,6 +816,194 @@ class AuthController extends Controller
             }
         } catch (\Throwable $error) {
             Log::error('n8n seeker resume webhook trigger failed: ' . $error->getMessage());
+        }
+    }
+
+    private function triggerN8nSeekerIdVerification(User $user): void
+    {
+        if (($user->role ?? '') !== 'Seeker' || empty($user->seeker_id_doc_path)) {
+            return;
+        }
+
+        $webhookUrl = config('services.n8n.seeker_id_verification_webhook_url');
+        if (!$webhookUrl) {
+            return;
+        }
+
+        $documentUrl = $this->buildPublicStorageUrl((string) $user->seeker_id_doc_path);
+        if (!$documentUrl) {
+            Log::warning('Skipping seeker ID verification trigger because document URL could not be resolved.', [
+                'user_id' => $user->id,
+                'seeker_id_doc_path' => $user->seeker_id_doc_path,
+            ]);
+            return;
+        }
+
+        $callbackUrl = $this->resolveSeekerIdVerificationCallbackUrl();
+        if (!$callbackUrl) {
+            Log::warning('Skipping seeker ID verification trigger because callback URL could not be resolved.', [
+                'user_id' => $user->id,
+            ]);
+            return;
+        }
+
+        try {
+            $request = Http::timeout((int) config('services.n8n.timeout_seconds', 10));
+
+            $authUser = config('services.n8n.basic_auth_user');
+            $authPassword = config('services.n8n.basic_auth_password');
+
+            if ($authUser !== null && $authPassword !== null && $authUser !== '' && $authPassword !== '') {
+                $request = $request->withBasicAuth((string) $authUser, (string) $authPassword);
+            }
+
+            $response = $request->post($webhookUrl, [
+                'event' => 'seeker_id_uploaded',
+                'user_id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'is_qc_resident' => (bool) $user->is_qc_resident,
+                'expected_qc_id' => $user->qc_id,
+                'document_path' => $user->seeker_id_doc_path,
+                'document_url' => $documentUrl,
+                'callback_url' => $callbackUrl,
+            ]);
+
+            if ($response->successful()) {
+                Log::info("n8n seeker ID verification webhook success for user {$user->id}", [
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                ]);
+            } else {
+                Log::warning("n8n seeker ID verification webhook non-success for user {$user->id}", [
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                ]);
+            }
+        } catch (\Throwable $error) {
+            Log::error('n8n seeker ID verification webhook trigger failed: ' . $error->getMessage());
+        }
+    }
+
+    private function storePendingSeekerIdDocument(\Illuminate\Http\UploadedFile $document): array
+    {
+        return $this->storeSeekerIdDocument($document, 'seeker-id-documents/pending');
+    }
+
+    private function storeSeekerIdDocumentForUser(User $user, \Illuminate\Http\UploadedFile $document): array
+    {
+        return $this->storeSeekerIdDocument($document, 'seeker-id-documents/' . $user->id);
+    }
+
+    private function storeSeekerIdDocument(\Illuminate\Http\UploadedFile $document, string $directory): array
+    {
+        $originalName = (string) $document->getClientOriginalName();
+        $extension = (string) $document->getClientOriginalExtension();
+        $hashedBaseName = hash('sha256', $originalName . '|' . Str::uuid() . '|' . microtime(true));
+        $storedName = $hashedBaseName . ($extension !== '' ? ('.' . $extension) : '');
+        $storedPath = $document->storeAs($directory, $storedName, 'public');
+
+        return [
+            'path' => 'storage/' . $storedPath,
+            'original_name' => $originalName,
+            'stored_name' => $storedName,
+        ];
+    }
+
+    private function moveSeekerIdDocumentToUserFolder(User $user): void
+    {
+        $currentDocumentPath = trim((string) ($user->seeker_id_doc_path ?? ''));
+        if ($currentDocumentPath === '') {
+            return;
+        }
+
+        $currentRelativePath = str_replace('storage/', '', $currentDocumentPath);
+        if ($currentRelativePath === '' || !Storage::disk('public')->exists($currentRelativePath)) {
+            return;
+        }
+
+        $targetRelativePath = 'seeker-id-documents/' . $user->id . '/' . ((string) ($user->seeker_id_doc_stored_name ?: basename($currentRelativePath)));
+        if ($currentRelativePath === $targetRelativePath) {
+            return;
+        }
+
+        Storage::disk('public')->makeDirectory('seeker-id-documents/' . $user->id);
+        Storage::disk('public')->move($currentRelativePath, $targetRelativePath);
+
+        $user->seeker_id_doc_path = 'storage/' . $targetRelativePath;
+        $user->save();
+    }
+
+    private function buildPublicStorageUrl(string $storagePath): ?string
+    {
+        $normalizedPath = trim($storagePath);
+        if ($normalizedPath === '') {
+            return null;
+        }
+
+        if (Str::startsWith($normalizedPath, ['http://', 'https://'])) {
+            return $normalizedPath;
+        }
+
+        $baseUrl = trim((string) config('services.n8n.backend_public_base_url', config('app.url')));
+        $baseUrl = rtrim($baseUrl, '/');
+
+        if ($baseUrl === '') {
+            return null;
+        }
+
+        return $baseUrl . '/' . ltrim($normalizedPath, '/');
+    }
+
+    private function resolveSeekerIdVerificationCallbackUrl(): ?string
+    {
+        $configuredUrl = trim((string) config('services.n8n.seeker_id_verification_callback_url', ''));
+        if ($configuredUrl !== '') {
+            return $configuredUrl;
+        }
+
+        $baseUrl = trim((string) config('services.n8n.backend_public_base_url', config('app.url')));
+        $baseUrl = rtrim($baseUrl, '/');
+
+        if ($baseUrl === '') {
+            return null;
+        }
+
+        return $baseUrl . '/api/webhooks/seeker-id-verification-result';
+    }
+
+    private function storeIdVerificationNotification(User $user, string $status, ?string $reason = null): void
+    {
+        $statusMessages = [
+            'verified' => 'Your QC ID verification is complete. Priority verification is now active on your account.',
+            'rejected' => 'Your uploaded ID could not be validated automatically. Please upload a clearer QC/valid ID.',
+            'manual_review' => 'Your uploaded ID needs manual review. Our team will check it shortly.',
+            'error' => 'Automated ID verification failed due to a processing error. Please try uploading again.',
+            'pending' => 'Your ID verification is currently being processed.',
+        ];
+
+        $content = $statusMessages[$status] ?? 'Your ID verification status has been updated.';
+        if ($reason !== null && $reason !== '') {
+            $content .= ' Reason: ' . $reason;
+        }
+
+        try {
+            DB::table('notifications')->insert([
+                'to_user_id' => $user->id,
+                'content' => $content,
+                'meta' => json_encode([
+                    'type' => 'seeker_id_verification',
+                    'verification_status' => $status,
+                    'is_priority_verified' => (bool) $user->is_priority_verified,
+                ]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to insert seeker ID verification notification.', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

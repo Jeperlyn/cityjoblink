@@ -56,6 +56,103 @@ const ApplicationProcessSteps = ({ status }) => {
   );
 };
 
+const normalizeExternalUrl = (value) => {
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  try {
+    const url = new URL(withProtocol);
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
+const inferEmployerLinkLabel = (url) => {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+
+    if (hostname.includes('linkedin.')) return 'LinkedIn';
+    if (hostname.includes('github.')) return 'GitHub';
+    if (hostname.includes('facebook.') || hostname.includes('fb.')) return 'Facebook';
+    if (hostname.includes('instagram.')) return 'Instagram';
+    if (hostname.includes('twitter.') || hostname.includes('x.')) return 'X';
+    if (hostname.includes('tiktok.')) return 'TikTok';
+
+    return 'Website';
+  } catch {
+    return 'Website';
+  }
+};
+
+const buildEmployerLinks = (job) => {
+  if (!job) return [];
+
+  const candidates = [
+    { label: 'Website', value: job.companyWebsite || job.company_website || job.employerWebsite || job.website },
+    { label: 'LinkedIn', value: job.linkedinUrl || job.linkedin_url || job.employerLinkedIn || job.companyLinkedIn },
+    { label: 'GitHub', value: job.githubUrl || job.github_url || job.employerGithub || job.companyGithub },
+    { label: 'Facebook', value: job.facebookUrl || job.facebook_url || job.employerFacebook || job.companyFacebook },
+    { label: 'Instagram', value: job.instagramUrl || job.instagram_url || job.employerInstagram || job.companyInstagram },
+    { label: 'X', value: job.twitterUrl || job.twitter_url || job.xUrl || job.x_url || job.employerX },
+  ];
+
+  const links = [];
+  const seenUrls = new Set();
+
+  candidates.forEach((candidate) => {
+    const normalizedUrl = normalizeExternalUrl(candidate.value);
+    if (!normalizedUrl || seenUrls.has(normalizedUrl)) {
+      return;
+    }
+
+    seenUrls.add(normalizedUrl);
+    links.push({
+      label: candidate.label === 'Website' ? inferEmployerLinkLabel(normalizedUrl) : candidate.label,
+      url: normalizedUrl,
+    });
+  });
+
+  return links;
+};
+
+const EmployerLinks = ({ job, compact = false, containerClassName = '' }) => {
+  const links = buildEmployerLinks(job);
+
+  if (links.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={`${compact ? 'space-y-2' : 'space-y-3'} ${containerClassName}`.trim()}>
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Employer Links</p>
+      <div className="flex flex-wrap gap-2">
+        {links.map((link) => (
+          <a
+            key={link.url}
+            href={link.url}
+            target="_blank"
+            rel="noreferrer noopener"
+            onClick={(event) => event.stopPropagation()}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+          >
+            <ExternalLink size={14} />
+            <span>{link.label}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // =====================================================
 // 2. COMPONENT: MATCH DETAILS PAGE (Skill Analysis)
 // =====================================================
@@ -86,6 +183,8 @@ export const JobDetailsPage = ({ job, matchData, onBack }) => {
              <p className={`text-3xl font-bold ${score >= 70 ? 'text-green-600' : 'text-orange-500'}`}>{score}%</p>
           </div>
         </div>
+
+        <EmployerLinks job={job} containerClassName="px-8 md:px-10 pt-8" />
 
         <div className="p-8 md:p-10 grid md:grid-cols-2 gap-6">
           <div className="bg-green-50/50 p-6 rounded-2xl border border-green-100">
@@ -202,6 +301,8 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
                     {recJob.type && <p><span className="font-semibold text-gray-700">Type:</span> {recJob.type}</p>}
                   </div>
 
+                  <EmployerLinks job={recJob} compact containerClassName="mb-4" />
+
                   {rec.matchReasons && (
                     <p className="text-sm text-gray-600 mb-5 bg-gray-50 border border-gray-100 rounded-lg p-3">{rec.matchReasons}</p>
                   )}
@@ -273,6 +374,8 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
                     <h4 className="text-sm font-bold text-gray-900 mb-3">Job Description</h4>
                     <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">{job.description}</p>
                   </div>
+
+                  <EmployerLinks job={job} compact containerClassName="mb-8" />
 
                   {!hasApp ? (
                     <button onClick={(e) => { e.stopPropagation(); onApply(job.id); }} className="w-full md:w-auto px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-sm">
@@ -652,9 +755,48 @@ const toastMsg = (title, icon = 'success') => {
 const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], initialTab, onCancelApplication, onViewJob, onNavigate, onUpdateProfile, onWithdrawTraining }) => {
   const [activeTab, setActiveTab] = useState(initialTab || 'overview');
   const [resumeFile, setResumeFile] = useState(null);
+  const [idDocumentFile, setIdDocumentFile] = useState(null);
+  const [idNumberInput, setIdNumberInput] = useState(profile?.qc_id || '');
+  const [backgroundLinks, setBackgroundLinks] = useState({
+    portfolioUrl: profile?.portfolioUrl || profile?.portfolio_url || '',
+    linkedinUrl: profile?.linkedinUrl || profile?.linkedin_url || '',
+    githubUrl: profile?.githubUrl || profile?.github_url || '',
+    facebookUrl: profile?.facebookUrl || profile?.facebook_url || '',
+    instagramUrl: profile?.instagramUrl || profile?.instagram_url || '',
+  });
+  const [isSavingBackgroundLinks, setIsSavingBackgroundLinks] = useState(false);
+  const [isIdUploading, setIsIdUploading] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
   const [withdrawModal, setWithdrawModal] = useState({ isOpen: false, type: null, id: null, title: '' });
   const fileInputRef = useRef(null);
+  const idFileInputRef = useRef(null);
+
+  const idVerificationStatus = profile?.idVerificationStatus || profile?.id_verification_status || 'not_submitted';
+  const idVerificationReason = profile?.idVerificationReason || profile?.id_verification_reason || '';
+  const isPriorityVerified = typeof profile?.isPriorityVerified === 'boolean'
+    ? profile.isPriorityVerified
+    : !!profile?.is_priority_verified;
+
+  const verificationLabels = {
+    verified: 'Verified',
+    rejected: 'Invalid ID',
+    manual_review: 'Manual Review',
+    pending: 'Pending Verification',
+    error: 'Verification Error',
+    not_submitted: 'Not Submitted',
+  };
+
+  const verificationStyles = {
+    verified: 'bg-green-50 text-green-700 border-green-200',
+    rejected: 'bg-red-50 text-red-700 border-red-200',
+    manual_review: 'bg-amber-50 text-amber-700 border-amber-200',
+    pending: 'bg-blue-50 text-blue-700 border-blue-200',
+    error: 'bg-red-50 text-red-700 border-red-200',
+    not_submitted: 'bg-gray-50 text-gray-700 border-gray-200',
+  };
+
+  const isIdInvalid = ['rejected', 'error'].includes(idVerificationStatus);
+  const canReuploadId = ['rejected', 'error', 'manual_review'].includes(idVerificationStatus);
 
   const birthdayDisplay = profile?.birthdayDisplay
     || profile?.birthday_display
@@ -674,6 +816,46 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
 
     setResumeFile(null);
   }, [profile?.resume_path]);
+
+  useEffect(() => {
+    if (profile?.seekerIdDocPath || profile?.seeker_id_doc_path) {
+      const source = profile?.seeker_id_doc_original_name
+        || profile?.seeker_id_doc_stored_name
+        || profile?.seekerIdDocPath
+        || profile?.seeker_id_doc_path;
+      const segments = String(source || '').split('/');
+      const fileName = segments[segments.length - 1] || 'id-document';
+      setIdDocumentFile({ name: fileName, fromServer: true });
+      return;
+    }
+
+    setIdDocumentFile(null);
+  }, [profile?.seekerIdDocPath, profile?.seeker_id_doc_path, profile?.seeker_id_doc_original_name, profile?.seeker_id_doc_stored_name]);
+
+  useEffect(() => {
+    setIdNumberInput(profile?.qc_id || '');
+  }, [profile?.qc_id]);
+
+  useEffect(() => {
+    setBackgroundLinks({
+      portfolioUrl: profile?.portfolioUrl || profile?.portfolio_url || '',
+      linkedinUrl: profile?.linkedinUrl || profile?.linkedin_url || '',
+      githubUrl: profile?.githubUrl || profile?.github_url || '',
+      facebookUrl: profile?.facebookUrl || profile?.facebook_url || '',
+      instagramUrl: profile?.instagramUrl || profile?.instagram_url || '',
+    });
+  }, [
+    profile?.portfolioUrl,
+    profile?.portfolio_url,
+    profile?.linkedinUrl,
+    profile?.linkedin_url,
+    profile?.githubUrl,
+    profile?.github_url,
+    profile?.facebookUrl,
+    profile?.facebook_url,
+    profile?.instagramUrl,
+    profile?.instagram_url,
+  ]);
 
   // Withdraw from training
   const handleWithdrawTraining = (trainingId) => {
@@ -792,6 +974,128 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
     }
   };
 
+  const handleIdDocumentSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setIdDocumentFile(file);
+  };
+
+  const handleSaveBackgroundLinks = async () => {
+    const userEmail = profile?.email;
+    if (!userEmail) {
+      alert('Missing account email. Please log in again before saving links.');
+      return;
+    }
+
+    const linkFields = [
+      { stateKey: 'portfolioUrl', payloadKey: 'portfolio_url', label: 'Portfolio / Website' },
+      { stateKey: 'linkedinUrl', payloadKey: 'linkedin_url', label: 'LinkedIn URL' },
+      { stateKey: 'githubUrl', payloadKey: 'github_url', label: 'GitHub URL' },
+      { stateKey: 'facebookUrl', payloadKey: 'facebook_url', label: 'Facebook URL' },
+      { stateKey: 'instagramUrl', payloadKey: 'instagram_url', label: 'Instagram URL' },
+    ];
+
+    const payload = { email: userEmail };
+
+    for (const field of linkFields) {
+      const rawValue = String(backgroundLinks[field.stateKey] || '').trim();
+      if (!rawValue) {
+        payload[field.payloadKey] = null;
+        continue;
+      }
+
+      const normalizedUrl = normalizeExternalUrl(rawValue);
+      if (!normalizedUrl) {
+        alert(`${field.label} must be a valid URL.`);
+        return;
+      }
+
+      payload[field.payloadKey] = normalizedUrl;
+    }
+
+    try {
+      setIsSavingBackgroundLinks(true);
+
+      const response = await fetch(`${API_BASE}/seeker/update-profile`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (!response.ok || data?.status !== 'success') {
+        throw new Error(data?.message || 'Failed to update seeker profile links.');
+      }
+
+      if (typeof onUpdateProfile === 'function' && data?.user) {
+        onUpdateProfile(data.user);
+      }
+
+      toastMsg('Background links saved successfully.');
+    } catch (error) {
+      console.error('Save seeker links error:', error);
+      alert(error?.message || 'Failed to save background links. Please try again.');
+    } finally {
+      setIsSavingBackgroundLinks(false);
+    }
+  };
+
+  const handleUploadIdDocument = async () => {
+    const userEmail = profile?.email;
+    if (!userEmail) {
+      alert('Missing account email. Please log in again before uploading your ID.');
+      return;
+    }
+
+    if (!idNumberInput.trim()) {
+      alert('Please enter your QC ID number before uploading.');
+      return;
+    }
+
+    if (!idDocumentFile) {
+      alert('Please select your QCitizen ID file first.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('email', userEmail);
+    formData.append('qc_id', idNumberInput.trim());
+    formData.append('document', idDocumentFile);
+
+    try {
+      setIsIdUploading(true);
+
+      const response = await fetch(`${API_BASE}/upload/seeker-id-document`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json'
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to upload ID document.');
+      }
+
+      if (typeof onUpdateProfile === 'function' && data?.user) {
+        onUpdateProfile(data.user);
+      }
+
+      toastMsg(canReuploadId ? 'QC ID re-uploaded. Verification restarted.' : 'QC ID uploaded. Verification in progress.');
+    } catch (error) {
+      console.error('ID Upload Error:', error);
+      alert(error?.message || 'Failed to upload ID document. Please try again.');
+    } finally {
+      setIsIdUploading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50/50 pb-20 pt-8">
       <div className="max-w-6xl mx-auto p-4 md:p-6">
@@ -801,6 +1105,24 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">Seeker Dashboard</h1>
             <p className="text-gray-500 mt-1 font-medium">Manage your career journey and profile</p>
         </header>
+
+        {isIdInvalid && (
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 animate-in fade-in duration-200">
+            <div>
+              <p className="text-sm font-black text-red-700 uppercase tracking-wider">QC ID Verification Failed</p>
+              <p className="text-sm text-red-700 mt-1">
+                {idVerificationReason || 'Your uploaded QCitizen ID could not be validated. Please re-upload a clearer copy to continue priority verification.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('profile')}
+              className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition-colors w-full md:w-auto"
+            >
+              Re-upload in Profile
+            </button>
+          </div>
+        )}
         
         {/* Sleek Tab Navigation */}
         <nav className="flex gap-2 mb-10 bg-gray-100/80 p-1.5 rounded-2xl w-fit overflow-x-auto mx-auto md:mx-0 shadow-inner">
@@ -859,6 +1181,69 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">ID Number</p>
                   <p className="text-sm font-medium text-gray-900 font-mono">{profile?.qc_id || "None"}</p>
+                </div>
+              </div>
+
+              <h4 className="text-lg font-bold text-gray-900 mb-6">Background Links For Employers</h4>
+              <div className="bg-gray-50 rounded-2xl border border-gray-100 p-6 mb-10">
+                <p className="text-sm text-gray-500 font-medium mb-4">Add your public profiles so employers can run background checks if available.</p>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Portfolio / Website</label>
+                    <input
+                      value={backgroundLinks.portfolioUrl}
+                      onChange={(e) => setBackgroundLinks((prev) => ({ ...prev, portfolioUrl: e.target.value }))}
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="https://yourportfolio.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">LinkedIn</label>
+                    <input
+                      value={backgroundLinks.linkedinUrl}
+                      onChange={(e) => setBackgroundLinks((prev) => ({ ...prev, linkedinUrl: e.target.value }))}
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="https://www.linkedin.com/in/username"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">GitHub</label>
+                    <input
+                      value={backgroundLinks.githubUrl}
+                      onChange={(e) => setBackgroundLinks((prev) => ({ ...prev, githubUrl: e.target.value }))}
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="https://github.com/username"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Facebook</label>
+                    <input
+                      value={backgroundLinks.facebookUrl}
+                      onChange={(e) => setBackgroundLinks((prev) => ({ ...prev, facebookUrl: e.target.value }))}
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="https://facebook.com/username"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Instagram</label>
+                    <input
+                      value={backgroundLinks.instagramUrl}
+                      onChange={(e) => setBackgroundLinks((prev) => ({ ...prev, instagramUrl: e.target.value }))}
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="https://instagram.com/username"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <button
+                    type="button"
+                    onClick={handleSaveBackgroundLinks}
+                    disabled={isSavingBackgroundLinks}
+                    className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+                  >
+                    {isSavingBackgroundLinks ? 'Saving...' : 'Save Background Links'}
+                  </button>
                 </div>
               </div>
               
@@ -921,6 +1306,76 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                     accept=".pdf" 
                     onChange={handleFileUpload} 
                   />
+                </div>
+
+                <div className="p-6 border border-gray-200 rounded-2xl bg-white md:col-span-2">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+                    <div>
+                      <h4 className="font-bold text-lg text-gray-900">QC ID Verification</h4>
+                      <p className="text-sm text-gray-500 font-medium">If your QCitizen ID is invalid, you can re-upload it here.</p>
+                    </div>
+                    <span className={`inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-black border ${verificationStyles[idVerificationStatus] || verificationStyles.not_submitted}`}>
+                      {verificationLabels[idVerificationStatus] || 'Unknown'}
+                    </span>
+                  </div>
+
+                  {isPriorityVerified && (
+                    <div className="mb-4 bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-700 font-semibold">
+                      Priority verification is active on your account.
+                    </div>
+                  )}
+
+                  {idVerificationReason && (
+                    <div className={`mb-4 rounded-xl p-3 text-sm border ${isIdInvalid ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                      {idVerificationReason}
+                    </div>
+                  )}
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">QC ID Number</label>
+                      <input
+                        value={idNumberInput}
+                        onChange={(e) => setIdNumberInput(e.target.value)}
+                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter your QC ID number"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">ID File</label>
+                      <button
+                        type="button"
+                        onClick={() => idFileInputRef.current?.click()}
+                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-left hover:bg-gray-100 transition-colors"
+                      >
+                        <span className="text-sm font-medium text-gray-700 truncate block">
+                          {idDocumentFile ? idDocumentFile.name : 'Select image or PDF'}
+                        </span>
+                      </button>
+                      <input
+                        type="file"
+                        ref={idFileInputRef}
+                        className="hidden"
+                        accept=".jpg,.jpeg,.png,.pdf,image/*,application/pdf"
+                        onChange={handleIdDocumentSelect}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                    <button
+                      type="button"
+                      onClick={handleUploadIdDocument}
+                      disabled={isIdUploading}
+                      className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+                    >
+                      {isIdUploading ? 'Uploading...' : (canReuploadId ? 'Re-upload QC ID' : 'Upload QC ID')}
+                    </button>
+                    {idVerificationStatus === 'pending' && (
+                      <span className="text-sm text-blue-600 font-semibold self-center">Verification is running in the background.</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

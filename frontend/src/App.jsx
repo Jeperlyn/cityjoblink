@@ -72,6 +72,18 @@ const normalizeUserProfile = (rawUser) => {
         isVerified: typeof rawUser.isVerified === 'boolean' ? rawUser.isVerified : !!rawUser.is_verified,
         uploadedDocs: typeof rawUser.uploadedDocs === 'boolean' ? rawUser.uploadedDocs : !!rawUser.uploaded_docs,
         verificationDocPath: rawUser.verificationDocPath || rawUser.verification_doc_path || null,
+        seekerIdDocPath: rawUser.seekerIdDocPath || rawUser.seeker_id_doc_path || null,
+        portfolioUrl: rawUser.portfolioUrl || rawUser.portfolio_url || null,
+        linkedinUrl: rawUser.linkedinUrl || rawUser.linkedin_url || null,
+        githubUrl: rawUser.githubUrl || rawUser.github_url || null,
+        facebookUrl: rawUser.facebookUrl || rawUser.facebook_url || null,
+        instagramUrl: rawUser.instagramUrl || rawUser.instagram_url || null,
+        idVerificationStatus: rawUser.idVerificationStatus || rawUser.id_verification_status || 'not_submitted',
+        idVerificationReason: rawUser.idVerificationReason || rawUser.id_verification_reason || null,
+        idVerificationConfidence: rawUser.idVerificationConfidence ?? rawUser.id_verification_confidence ?? null,
+        isPriorityVerified: typeof rawUser.isPriorityVerified === 'boolean'
+            ? rawUser.isPriorityVerified
+            : !!rawUser.is_priority_verified,
     };
 };
 
@@ -103,6 +115,13 @@ const mapBackendJob = (job) => {
         location: job.location,
         type: job.employment_type,
         industry: job.industry,
+        companyWebsite: job.companyWebsite || job.company_website || job.employer_company_website || null,
+        employerWebsite: job.employerWebsite || job.employer_website || job.employer_company_website || null,
+        linkedinUrl: job.linkedinUrl || job.linkedin_url || null,
+        githubUrl: job.githubUrl || job.github_url || null,
+        facebookUrl: job.facebookUrl || job.facebook_url || null,
+        instagramUrl: job.instagramUrl || job.instagram_url || null,
+        twitterUrl: job.twitterUrl || job.twitter_url || job.xUrl || job.x_url || null,
         description: job.description || '',
         salary,
         salaryMin: min,
@@ -386,6 +405,11 @@ const App = () => {
                     resume_text: app.seeker_resume_text,
                     resumeFile: app.seeker_resume_path ? app.seeker_resume_path.split('/').pop() : null,
                     educationalAttainment: app.seeker_educational_attainment || null,
+                    portfolioUrl: app.seeker_portfolio_url || null,
+                    linkedinUrl: app.seeker_linkedin_url || null,
+                    githubUrl: app.seeker_github_url || null,
+                    facebookUrl: app.seeker_facebook_url || null,
+                    instagramUrl: app.seeker_instagram_url || null,
                 });
             }
         });
@@ -934,7 +958,7 @@ const App = () => {
     const handlePostJob = async (jobPayload) => {
         if (!user?.email) {
             showToast('Missing account email.', 'error');
-            return;
+            return false;
         }
 
         try {
@@ -966,8 +990,10 @@ const App = () => {
             const refreshedJobs = await fetchJobs();
             setJobs(refreshedJobs);
             showToast('Job posted successfully.', 'success');
+            return true;
         } catch (error) {
             showToast(error?.message || 'Failed to post job.', 'error');
+            return false;
         }
     };
 
@@ -975,7 +1001,7 @@ const App = () => {
     const handleUpdateJob = async (updatedJobPayload) => {
         if (!user?.email) {
             showToast('Missing account email.', 'error');
-            return;
+            return false;
         }
 
         try {
@@ -1007,8 +1033,10 @@ const App = () => {
             const refreshedJobs = await fetchJobs();
             setJobs(refreshedJobs);
             showToast('Job updated successfully.', 'success');
+            return true;
         } catch (error) {
             showToast(error?.message || 'Failed to update job.', 'error');
+            return false;
         }
     };
 

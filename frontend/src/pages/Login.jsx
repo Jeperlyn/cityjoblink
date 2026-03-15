@@ -284,32 +284,35 @@ const handleSubmit = async (e) => {
 
         setIsLoading(true);
         try {
+            const registrationPayload = new FormData();
+            registrationPayload.append('firstName', formData.firstName || '');
+            registrationPayload.append('lastName', formData.lastName || '');
+            registrationPayload.append('middleName', formData.middleName || '');
+            registrationPayload.append('suffix', formData.suffix || '');
+            registrationPayload.append('companyName', formData.companyName || '');
+            registrationPayload.append('industry', formData.industry || '');
+            registrationPayload.append('companyAddress', formData.companyAddress || '');
+            registrationPayload.append('qcId', formData.qcId || '');
+            registrationPayload.append('bdayMonth', formData.bdayMonth || '');
+            registrationPayload.append('bdayDay', formData.bdayDay || '');
+            registrationPayload.append('bdayYear', formData.bdayYear || '');
+            registrationPayload.append('gender', formData.gender || '');
+            registrationPayload.append('isQcResident', formData.isQcResident ? '1' : '0');
+            registrationPayload.append('email', formData.email || '');
+            registrationPayload.append('password', formData.password || '');
+            registrationPayload.append('password_confirmation', formData.confirmPassword || '');
+            registrationPayload.append('role', role);
+
+            if (role === 'Seeker' && formData.qcIdFile) {
+                registrationPayload.append('qcIdFile', formData.qcIdFile);
+            }
+
             const regResponse = await fetch(`${API_BASE}/register`, {
                 method: 'POST',
                 headers: { 
-                    'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify({
-                    firstName: formData.firstName,
-                    lastName: formData.lastName,
-                    middleName: formData.middleName,
-                    suffix: formData.suffix,
-                    companyName: formData.companyName,
-                    // ✅ FIXED: Ibinabalik natin itong dalawa para ma-save sa registration
-                    industry: formData.industry,
-                    companyAddress: formData.companyAddress,
-                    qcId: formData.qcId,
-                    bdayMonth: formData.bdayMonth,
-                    bdayDay: formData.bdayDay,
-                    bdayYear: formData.bdayYear,
-                    gender: formData.gender,
-                    isQcResident: formData.isQcResident,
-                    email: formData.email,
-                    password: formData.password,
-                    password_confirmation: formData.confirmPassword,
-                    role: role
-                })
+                body: registrationPayload
             });
             
             const regData = await regResponse.json();

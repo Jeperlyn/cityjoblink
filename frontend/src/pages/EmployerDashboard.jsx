@@ -1,13 +1,93 @@
 // src/pages/EmployerDashboard.jsx
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
-    LayoutDashboard, Briefcase, Building2, MessageCircle, Settings, LogOut,
+    LayoutDashboard, Briefcase, Building2, MessageCircle, LogOut,
     Edit3, User, X, FileText, ChevronUp, ChevronDown, AlertCircle,
-    CheckCircle, UploadCloud, Clock, MapPin, Globe, Phone, Download,
+    CheckCircle, UploadCloud, Clock, MapPin, Globe, Phone, Eye, ExternalLink,
     CreditCard, Calendar, Smile, Mail, BookOpen, Star, Filter, TrendingUp,
     Target, ArrowRight
 } from 'lucide-react';
 import { API_BASE, buildBackendUrl } from '../lib/apiBase';
+
+const JOB_LOCATION_GROUPS = [
+    {
+        label: 'City',
+        options: [
+            'Caloocan',
+            'Las Pi\u00f1as',
+            'Makati',
+            'Malabon',
+            'Mandaluyong',
+            'Manila',
+            'Marikina',
+            'Muntinlupa',
+            'Navotas',
+            'Para\u00f1aque',
+            'Pasay',
+            'Pasig',
+            'Quezon City',
+            'San Juan',
+            'Taguig',
+            'Valenzuela'
+        ]
+    },
+    {
+        label: 'Municipality',
+        options: ['Pateros']
+    }
+];
+
+const JOB_LOCATION_VALUES = new Set(JOB_LOCATION_GROUPS.flatMap((group) => group.options));
+
+const normalizeExternalUrl = (value) => {
+    if (typeof value !== 'string') return null;
+
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+    try {
+        const url = new URL(withProtocol);
+        if (!['http:', 'https:'].includes(url.protocol)) {
+            return null;
+        }
+
+        return url.toString();
+    } catch {
+        return null;
+    }
+};
+
+const buildApplicantBackgroundLinks = (applicant) => {
+    if (!applicant) return [];
+
+    const candidates = [
+        { label: 'Portfolio / Website', value: applicant.portfolioUrl || applicant.portfolio_url },
+        { label: 'LinkedIn', value: applicant.linkedinUrl || applicant.linkedin_url },
+        { label: 'GitHub', value: applicant.githubUrl || applicant.github_url },
+        { label: 'Facebook', value: applicant.facebookUrl || applicant.facebook_url },
+        { label: 'Instagram', value: applicant.instagramUrl || applicant.instagram_url },
+    ];
+
+    const links = [];
+    const seen = new Set();
+
+    candidates.forEach((candidate) => {
+        const normalizedUrl = normalizeExternalUrl(candidate.value);
+        if (!normalizedUrl || seen.has(normalizedUrl)) {
+            return;
+        }
+
+        seen.add(normalizedUrl);
+        links.push({
+            label: candidate.label,
+            url: normalizedUrl,
+        });
+    });
+
+    return links;
+};
 
 const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, onUpdateJob, onUpdateProfile, onUploadDocs, onOpenChat, onUpdateStatus }) => {
     const [activeTab, setActiveTab] = useState('overview');
@@ -168,14 +248,18 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
         }
     };
 
-    const handlePostJob = () => {
+    const handlePostJob = async () => {
         setJobPostError(null);
+
+        const selectedLocationIsAllowed = Boolean(newJob.location) && (
+            JOB_LOCATION_VALUES.has(newJob.location) || newJob.location === editingJob?.location
+        );
 
         if (!newJob.title || newJob.title.trim().length < 5) {
             return setJobPostError("Job Title must be at least 5 characters long.");
         }
-        if (!newJob.location || newJob.location.trim().length < 4) {
-            return setJobPostError("Location must be at least 4 characters long.");
+        if (!selectedLocationIsAllowed) {
+            return setJobPostError("Please select a job location.");
         }
         if (!newJob.description || newJob.description.trim().length < 20) {
             return setJobPostError("Job Description must be at least 20 characters long.");
@@ -184,9 +268,6 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
         const noSpecialCharsRegex = /^[a-zA-Z0-9\s,.\-&]+$/;
         if (!noSpecialCharsRegex.test(newJob.title)) {
             return setJobPostError("Job Title contains invalid special characters (e.g., @, !, $, etc.).");
-        }
-        if (!noSpecialCharsRegex.test(newJob.location)) {
-            return setJobPostError("Location contains invalid special characters.");
         }
 
         if (newJob.requiredSkills) {
@@ -211,11 +292,14 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
             posted: editingJob ? editingJob.posted : 'Just now'
         };
 
-        if (editingJob && typeof onUpdateJob === 'function') {
-            onUpdateJob(payload);
-        } else {
-            onPostJob(payload);
+        const didSave = editingJob
+            ? (typeof onUpdateJob === 'function' ? await onUpdateJob(payload) : false)
+            : (typeof onPostJob === 'function' ? await onPostJob(payload) : false);
+
+        if (!didSave) {
+            return;
         }
+
         setActiveTab('jobs');
         setEditingJob(null);
         setNewJob({ title: '', salaryMin: '', salaryMax: '', location: '', type: 'Full-time', requiredSkills: '', educationalAttainmentRequired: '', description: '' });
@@ -264,6 +348,17 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
 
     const salaryOptions = Array.from({ length: 99 }, (_, index) => (index + 2) * 5000);
     const statusFilterOptions = ['All', 'Pending', 'Viewing', 'Interview', 'Hired', 'Rejected', 'Withdrawn'];
+    const jobLocationOptions = useMemo(() => {
+        if (newJob.location && !JOB_LOCATION_VALUES.has(newJob.location)) {
+            return [
+                { label: 'Current Saved Location', options: [newJob.location] },
+                ...JOB_LOCATION_GROUPS,
+            ];
+        }
+
+        return JOB_LOCATION_GROUPS;
+    }, [newJob.location]);
+    const applicantBackgroundLinks = useMemo(() => buildApplicantBackgroundLinks(viewApplicant), [viewApplicant]);
 
     const isProfileInfoComplete = profile?.industry && (profile?.address || profile?.companyAddress || profile?.company_address);
 
@@ -283,10 +378,6 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                     </button>
                     <button onClick={() => setActiveTab('jobs')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold transition-colors ${activeTab === 'jobs' ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
                         <Briefcase size={18} /> My Job Posts
-                    </button>
-                    <button onClick={() => setActiveTab('profile')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold transition-colors ${activeTab === 'profile' ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-                        <Settings size={18} /> Company Profile
-                        {!isProfileInfoComplete && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse ml-auto"></span>}
                     </button>
                 </nav>
 
@@ -429,11 +520,10 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-red-100 text-red-600 rounded-full"><AlertCircle size={20} /></div>
                                     <div>
-                                        <p className="font-bold text-red-900 text-sm">Action Required: Complete Company Profile</p>
+                                        <p className="font-bold text-red-900 text-sm">Action Required: Complete Employer Details</p>
                                         <p className="text-red-700 text-xs">Address and Industry are mandatory for job posting legitimacy.</p>
                                     </div>
                                 </div>
-                                <button onClick={() => setActiveTab('profile')} className="text-sm font-bold text-red-600 hover:underline">Complete Now →</button>
                             </div>
                         )}
                     </div>
@@ -497,6 +587,12 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                     </span>
                                                     <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded font-bold">{j.type}</span>
                                                 </div>
+                                                {j.location && (
+                                                    <div className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-gray-500">
+                                                        <MapPin size={14} className="text-blue-500" />
+                                                        <span>{j.location}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="flex gap-2">
                                                 <button onClick={() => setExpandedJob(expandedJob === j.id ? null : j.id)} className="p-2 border rounded-lg hover:bg-gray-50">{expandedJob === j.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</button>
@@ -512,6 +608,10 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                 </div>
 
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+                                                    <div>
+                                                        <h4 className="text-xs font-black text-gray-400 uppercase mb-1 flex items-center gap-1"><MapPin size={12} /> Location</h4>
+                                                        <p className="font-semibold text-gray-800">{j.location || "Not specified"}</p>
+                                                    </div>
                                                     <div>
                                                         <h4 className="text-xs font-black text-gray-400 uppercase mb-1 flex items-center gap-1"> Educational Attainment</h4>
                                                         <p className="font-semibold text-gray-800">{j.educationalAttainmentRequired || "Not specified"}</p>
@@ -593,7 +693,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                                     <MessageCircle size={16} />
                                                                 </button>
 
-                                                                <button onClick={() => !isWithdrawn && s && setViewApplicant(s)} className="text-xs font-bold px-3 py-2 border rounded-lg hover:bg-gray-50 bg-white">Resume</button>
+                                                                <button onClick={() => !isWithdrawn && s && setViewApplicant(s)} className="text-xs font-bold px-3 py-2 border rounded-lg hover:bg-gray-50 bg-white">View Document</button>
                                                                 <select
                                                                     className="text-xs font-bold border rounded-lg p-2 bg-white"
                                                                     value={app.status}
@@ -616,7 +716,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                     </div>
                 )}
 
-                {/* VIEW 3: COMPANY PROFILE */}
+                {/* VIEW 3: COMPANY SETTINGS */}
                 {activeTab === 'profile' && (
                     <div className="max-w-2xl space-y-6">
                         <h2 className="text-2xl font-bold text-gray-900">Company Settings</h2>
@@ -684,7 +784,16 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                         <div className="space-y-5">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <input className="w-full p-3.5 border border-gray-200 rounded-lg bg-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Job Title" value={newJob.title} onChange={e => { const cleanValue = e.target.value.replace(/[^a-zA-Z0-9\s,.\-&]/g, ''); setNewJob({ ...newJob, title: cleanValue }); }} />
-                                <input className="w-full p-3.5 border border-gray-200 rounded-lg bg-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Location (e.g. Quezon City)" value={newJob.location} onChange={e => { const cleanValue = e.target.value.replace(/[^a-zA-Z0-9\s,.\-&]/g, ''); setNewJob({ ...newJob, location: cleanValue }); }} />
+                                <select className="w-full p-3.5 border border-gray-200 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none" value={newJob.location} onChange={e => setNewJob({ ...newJob, location: e.target.value })}>
+                                    <option value="">Select Job Location</option>
+                                    {jobLocationOptions.map((group) => (
+                                        <optgroup key={group.label} label={group.label}>
+                                            {group.options.map((location) => (
+                                                <option key={location} value={location}>{location}</option>
+                                            ))}
+                                        </optgroup>
+                                    ))}
+                                </select>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -754,6 +863,27 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                 <p className="text-xs font-black text-gray-400 uppercase mb-1">Education</p>
                                 <p className="font-bold text-sm">{viewApplicant.educationalAttainment || "Not identified"}</p>
                             </div>
+                            <div className="bg-white p-4 rounded-xl border shadow-sm">
+                                <p className="text-xs font-black text-gray-400 uppercase mb-2">Background Links</p>
+                                {applicantBackgroundLinks.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                        {applicantBackgroundLinks.map((link) => (
+                                            <a
+                                                key={link.url}
+                                                href={link.url}
+                                                target="_blank"
+                                                rel="noreferrer noopener"
+                                                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-colors"
+                                            >
+                                                <ExternalLink size={14} />
+                                                <span>{link.label}</span>
+                                            </a>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">No background links provided by applicant.</p>
+                                )}
+                            </div>
                         </div>
                         <div className="p-6 flex justify-end gap-3 border-t bg-white">
                             {viewApplicant.resume_path ? (
@@ -761,7 +891,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                     onClick={() => window.open(buildBackendUrl(viewApplicant.resume_path), '_blank')}
                                     className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 shadow-md transition-all"
                                 >
-                                    <Download size={18} /> Download PDF
+                                    <Eye size={18} /> View Document
                                 </button>
                             ) : (
                                 <button
