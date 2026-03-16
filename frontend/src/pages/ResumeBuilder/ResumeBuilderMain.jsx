@@ -34,18 +34,62 @@ export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
     summary: "",
   });
 
+  const parseNameForResume = (rawName) => {
+    const value = String(rawName || "").trim();
+    if (!value) {
+      return { firstName: "", middleName: "", lastName: "" };
+    }
+
+    if (value.includes(",")) {
+      const [left, ...rightParts] = value.split(",");
+      const lastName = String(left || "").trim();
+      const rightTokens = rightParts
+        .join(" ")
+        .split(/\s+/)
+        .filter(Boolean);
+
+      if (rightTokens.length === 0) {
+        return { firstName: "", middleName: "", lastName };
+      }
+
+      if (rightTokens.length === 1) {
+        return { firstName: rightTokens[0], middleName: "", lastName };
+      }
+
+      return {
+        firstName: rightTokens.slice(0, -1).join(" "),
+        middleName: rightTokens[rightTokens.length - 1],
+        lastName,
+      };
+    }
+
+    const tokens = value.split(/\s+/).filter(Boolean);
+
+    if (tokens.length === 1) {
+      return { firstName: tokens[0], middleName: "", lastName: "" };
+    }
+
+    if (tokens.length === 2) {
+      return { firstName: tokens[0], middleName: "", lastName: tokens[1] };
+    }
+
+    return {
+      firstName: tokens[0],
+      middleName: tokens.slice(1, -1).join(" "),
+      lastName: tokens[tokens.length - 1],
+    };
+  };
+
 
   useEffect(() => {
     if (user) {
-      // Split name logic (Simple split by space)
-      const nameParts = user.name ? user.name.split(" ") : [];
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+      const parsedName = parseNameForResume(user.name);
 
       setPersonalInfo((prev) => ({
         ...prev,
-        firstName: firstName,
-        lastName: lastName,
+        firstName: parsedName.firstName,
+        middleName: parsedName.middleName,
+        lastName: parsedName.lastName,
         email: user.email || "",
         phone: user.contact || "",
         location: user.address || "",

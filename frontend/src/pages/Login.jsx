@@ -1,6 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Building2, CreditCard, FileCheck, HelpCircle, UploadCloud, Globe, MapPin, Phone, CheckCircle, AlertCircle, Loader2, Lock, UserCheck, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { API_BASE } from '../lib/apiBase';
+import {
+    formatQcId338,
+    normalizeQrGenderToFormValue,
+    parseQcQrPayload,
+    toBirthdateFormValues,
+} from '../lib/qcQrParser';
 
 // --- SMART MODAL COMPONENT ---
 const SmartModal = ({ type, title, message, onClose }) => {
@@ -45,6 +51,7 @@ const Login = ({ onLogin }) => {
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [modal, setModal] = useState({ type: null, title: '', message: '' });
+    const [qcQrFeedback, setQcQrFeedback] = useState({ type: '', message: '' });
   
   const qcIdInputRef = useRef(null);
 
@@ -71,8 +78,53 @@ const Login = ({ onLogin }) => {
 
   const handleQcIdChange = (e) => {
     const file = e.target.files?.[0];
-    if (file) setFormData({ ...formData, qcIdFile: file });
+        if (file) {
+            setFormData((prev) => ({ ...prev, qcIdFile: file }));
+        }
   };
+
+    const handleQcIdInputChange = (e) => {
+        const value = e.target.value;
+        const parsedQr = parseQcQrPayload(value);
+
+        if (!parsedQr.isQrPayload) {
+            setQcQrFeedback({ type: '', message: '' });
+            setFormData((prev) => ({ ...prev, qcId: value }));
+            return;
+        }
+
+        const fields = parsedQr.fields || {};
+        const nextQcId = fields.qcIdDigits?.length === 14 ? formatQcId338(fields.qcIdDigits) : value;
+
+        if (!parsedQr.isValid) {
+            setQcQrFeedback({
+                type: 'error',
+                message: parsedQr.errors.join(' '),
+            });
+            setFormData((prev) => ({ ...prev, qcId: nextQcId }));
+            return;
+        }
+
+        const birthdate = toBirthdateFormValues(fields.birthdateYYMMDD);
+        const mappedGender = normalizeQrGenderToFormValue(fields.gender);
+
+        setFormData((prev) => ({
+            ...prev,
+            qcId: nextQcId,
+            firstName: fields.name.firstName || prev.firstName,
+            middleName: fields.name.middleName || prev.middleName,
+            lastName: fields.name.lastName || prev.lastName,
+            bdayMonth: birthdate?.bdayMonth || prev.bdayMonth,
+            bdayDay: birthdate?.bdayDay || prev.bdayDay,
+            bdayYear: birthdate?.bdayYear || prev.bdayYear,
+            gender: mappedGender || prev.gender,
+        }));
+
+        setQcQrFeedback({
+            type: 'success',
+            message: 'QR payload detected. Name, QC ID, birthdate, and gender were auto-filled.',
+        });
+    };
 
   // --- ❌ TEST CASE VALIDATIONS (CORE LOGIC) ---
   const validateForm = () => {
@@ -540,7 +592,12 @@ const handleSubmit = async (e) => {
                                     <label className={`text-[10px] font-black uppercase mb-2 flex items-center gap-1 ${formData.isQcResident ? 'text-blue-700' : 'text-orange-700'}`}>
                                         <CreditCard size={14}/> {formData.isQcResident ? 'Priority QC Verification' : 'Standard ID Verification'}
                                     </label>
-                                    <input required className="w-full p-2 bg-white border border-gray-300 rounded-lg text-sm mb-2" placeholder={formData.isQcResident ? "QC ID Number" : "Valid ID Number (Barangay/Passport)"} value={formData.qcId} onChange={e => setFormData({...formData, qcId: e.target.value})} />
+                                    <input required className="w-full p-2 bg-white border border-gray-300 rounded-lg text-sm mb-2" placeholder={formData.isQcResident ? "QC ID Number or QR payload" : "Valid ID Number or QR payload"} value={formData.qcId} onChange={handleQcIdInputChange} />
+                                    {qcQrFeedback.message && (
+                                        <p className={`text-[11px] mb-2 font-semibold ${qcQrFeedback.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
+                                            {qcQrFeedback.message}
+                                        </p>
+                                    )}
                                     <input type="file" ref={qcIdInputRef} onChange={handleQcIdChange} className="hidden" accept="image/*,application/pdf" />
                                     <div onClick={() => qcIdInputRef.current.click()} className="w-full p-2 bg-white border border-gray-300 rounded-lg text-[10px] cursor-pointer hover:bg-gray-50 flex items-center justify-center gap-2 text-gray-500 font-bold">
                                         {formData.qcIdFile ? <><FileCheck className="text-green-600" size={14}/> {formData.qcIdFile.name}</> : <><UploadCloud size={14}/> Upload ID Document</>}

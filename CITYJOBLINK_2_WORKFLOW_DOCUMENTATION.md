@@ -1,6 +1,6 @@
 # CityJobLink_2 Workflow Documentation
 
-Updated: March 11, 2026
+Updated: March 16, 2026
 
 ## 1) Full Workflow In Sentences (Start To Finish)
 
@@ -8,11 +8,11 @@ CityJobLink_2 is a React frontend plus a Laravel API backend connected to Postgr
 
 When the frontend starts, `frontend/src/App.jsx` checks local storage for a saved user session. If no user exists, the app shows public pages like landing, public trainings, and public job fairs, and then routes users to login when they need protected actions.
 
-When a seeker creates an account, the frontend sends multipart form data to `POST /api/register`, including QC ID number and uploaded ID image or PDF. The backend validates these fields, stores the ID file in pending storage, sets initial verification state to pending, generates a one-time password (OTP), stores pending registration data in cache, and sends the OTP by email. The account is not created in the `users` table yet at this point.
+When a seeker creates an account, the frontend sends multipart form data to `POST /api/register`, including optional QC ID number and uploaded ID image or PDF. The backend stores the ID file in pending storage, keeps ID verification fields in `not_submitted`, generates a one-time password (OTP), stores pending registration data in cache, and sends the OTP by email. The account is not created in the `users` table yet at this point.
 
 When an employer creates an account, the frontend still calls `POST /api/register` but without seeker ID requirements. The backend keeps the same OTP-first registration behavior and stores employer-specific profile fields.
 
-When the user submits the OTP, the frontend calls `POST /api/verify-otp`. The backend verifies cached OTP data, creates the user in `users`, moves the pending seeker ID file into a user-specific folder when applicable, and completes registration. For seekers with an uploaded ID document, the backend automatically triggers a dedicated n8n OCR webhook so verification can run asynchronously. The frontend then performs login using `POST /api/login`, stores user data in local storage, and redirects to the correct dashboard based on role.
+When the user submits the OTP, the frontend calls `POST /api/verify-otp`. The backend verifies cached OTP data, creates the user in `users`, moves the pending seeker ID file into a user-specific folder when applicable, and completes registration. ID documents are stored for later use, but automated ID validation is currently disabled. The frontend then performs login using `POST /api/login`, stores user data in local storage, and redirects to the correct dashboard based on role.
 
 For password recovery, users first call `POST /api/forgot-password/request` to receive a reset OTP, then `POST /api/forgot-password/reset` to set a new password.
 
@@ -30,7 +30,7 @@ In the seeker training flow, the seeker views available trainings from `GET /api
 
 In the seeker profile flow, resume upload happens via `POST /api/upload/resume`. The backend stores the file, extracts text, derives skills and education metadata, updates the seeker profile, clears stale rows in `job_matches`, and triggers the n8n seeker-resume workflow webhook if configured. Resume removal is `DELETE /api/upload/resume`, which deletes file and metadata and clears seeker match rows.
 
-In the seeker ID verification flow, a seeker can upload or replace ID documents using `POST /api/upload/seeker-id-document`. The backend stores the file, resets verification fields to pending, and triggers n8n OCR verification. n8n then sends the result to `POST /api/webhooks/seeker-id-verification-result`, where the backend updates `id_verification_status`, confidence, extracted values, reason, and `is_priority_verified`.
+In the seeker ID document flow, a seeker can upload or replace ID documents using `POST /api/upload/seeker-id-document`. The backend stores the file and metadata, resets extracted and verification detail fields, and keeps status as `not_submitted`. No OCR or callback processing is executed.
 
 In the employer account flow, employers upload verification documents through `POST /api/upload/employer-documents`. The backend stores documents and marks account as pending verification. Employer profile updates happen through `POST /api/employer/update-profile`.
 
@@ -46,11 +46,11 @@ In messaging flow, users fetch conversation data via `GET /api/messages`, send v
 
 In match visibility flow, seeker and employer UI can call `GET /api/match-metrics` for job-to-seeker skill and education metrics. If latest n8n score exists and education gate passes, that score is preferred.
 
-n8n currently has two workflow JSON definitions under `n8n/`:
+n8n currently has two active workflow JSON definitions under `n8n/`:
 
 - `my-workflow-fixed.json` is triggered on job creation or update webhook, reads seekers with resumes, computes scores, writes `job_matches`, and emails seekers with score threshold.
 - `seeker-resume-recommendation-workflow.json` is triggered on seeker resume upload webhook, reads open jobs, computes seeker-centric matches, writes `job_matches`, and emails recommendation summaries.
-- `seeker-id-verification-workflow.json` is triggered on seeker ID upload event, calls OCR API, evaluates QC ID match rules, and posts verification callback to Laravel.
+- `seeker-id-verification-workflow.json` may still exist in the repository for historical reference, but it is not wired to active backend routes.
 
 From a data lifecycle perspective, most user actions produce one or more of these outcomes: table insert or update, optional notification insert, optional n8n webhook trigger, and frontend state refresh by re-fetching the relevant API resource.
 
@@ -70,8 +70,7 @@ One practical note is that the current API routes are not wrapped in auth middle
 | POST | `/api/upload/resume` | Seeker | Upload and parse resume | Store file, parse text, infer skills and education, update profile, clear stale matches, trigger n8n resume webhook | `users` update, `job_matches` delete |
 | DELETE | `/api/upload/resume` | Seeker | Remove resume | Delete stored file and reset parsed resume fields, clear seeker matches | `users` update, `job_matches` delete |
 | POST | `/api/upload/employer-documents` | Employer | Submit verification docs | Store docs and set account as pending review | `users` update |
-| POST | `/api/upload/seeker-id-document` | Seeker | Submit QC or valid ID for automated checks | Store seeker ID file, reset verification fields, trigger n8n OCR workflow | `users` update |
-| POST | `/api/webhooks/seeker-id-verification-result` | n8n | Persist OCR verification result | Validate webhook secret, update seeker verification fields, insert status notification | `users` update, `notifications` insert |
+| POST | `/api/upload/seeker-id-document` | Seeker | Submit QC or valid ID for storage | Store seeker ID file and metadata only, keep verification state as not submitted | `users` update |
 | GET | `/api/jobs` | All roles | List jobs | Return open jobs by default, supports filters and optional include closed | `jobs_catalog` read |
 | POST | `/api/jobs` | Employer | Create job | Validate employer and verification status, insert job, trigger n8n match webhook | `jobs_catalog` insert |
 | PUT | `/api/jobs/{id}` | Employer | Update job | Ownership check, update job fields, retrigger n8n match webhook | `jobs_catalog` update |
@@ -113,9 +112,7 @@ flowchart LR
   FE -->|HTTP JSON and multipart| API
   API -->|Read and write domain data| DB
   API -->|Webhook events for matching| N8N
-  API -->|Webhook events for ID OCR verification| N8N
   N8N -->|Persist match scores| DB
-  N8N -->|Verification callback result| API
   API -->|Auth OTP and notifications| MAIL
   N8N -->|Recommendation and alert emails| MAIL
   API -->|JSON responses for UI refresh| FE
@@ -190,7 +187,7 @@ The employer opens applicant list, sees fit scores and reasons, messages candida
 
 This cycle repeats as jobs and resumes change. Matching, notifications, and messaging keep the system synchronized between seekers and employers while admin maintains employer trust through verification review.
 
-For seeker priority checks, ID verification now runs asynchronously. A seeker can complete registration quickly, while OCR validation updates account flags in the background. If OCR confidence is low or fields do not match submitted QC ID, the status moves to manual review or rejected and the seeker receives an in-app notification explaining the outcome.
+For seeker ID handling, document uploads are retained for storage and future workflows. Automated OCR verification and callback processing are intentionally disabled in the current backend flow.
 
 ---
 
@@ -199,27 +196,19 @@ For seeker priority checks, ID verification now runs asynchronously. A seeker ca
 - API identity currently relies on request payload values like `email` instead of authenticated middleware routes.
 - Job fairs are currently frontend-local in state and local storage, while trainings are backend-persisted.
 - n8n workflows in the repo are present as JSON and appear configured for local n8n endpoints.
-- Key n8n backend environment keys now include `N8N_MATCH_WEBHOOK_URL`, `N8N_SEEKER_RESUME_WEBHOOK_URL`, `N8N_SEEKER_ID_VERIFICATION_WEBHOOK_URL`, and `N8N_SEEKER_ID_VERIFICATION_CALLBACK_SECRET`.
+- Key n8n backend environment keys now include `N8N_MATCH_WEBHOOK_URL` and `N8N_SEEKER_RESUME_WEBHOOK_URL`.
 
 ---
 
-## 7) Automated ID Verification Flowchart
+## 7) ID Document Storage Flowchart
 
 ```mermaid
 flowchart LR
   FE[Frontend Registration or ID Re-upload]
-  API1[Laravel API: Store ID and mark Pending]
-  N8N[n8n OCR Workflow]
-  OCR[OCR API]
-  API2[Laravel Callback Endpoint]
-  DB[(users + notifications)]
+  API1[Laravel API: Store ID and metadata]
+  DB[(users)]
 
   FE -->|multipart with qcId and ID file| API1
-  API1 -->|event seeker_id_uploaded| N8N
-  N8N -->|image URL parse| OCR
-  OCR -->|text extraction response| N8N
-  N8N -->|status, confidence, reason| API2
-  API2 -->|update verification fields| DB
-  API2 -->|insert seeker notification| DB
+  API1 -->|persist seeker ID document fields| DB
 ```
 

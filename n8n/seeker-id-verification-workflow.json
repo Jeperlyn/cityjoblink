@@ -1,4 +1,4 @@
-{
+﻿{
     "name":  "Seeker ID Verification OCR",
     "nodes":  [
                   {
@@ -12,36 +12,306 @@
                       "type":  "n8n-nodes-base.webhook",
                       "typeVersion":  2.1,
                       "position":  [
-                                       260,
-                                       260
+                                       220,
+                                       320
                                    ],
-                      "id":  "16c9fa39-73d9-4e52-8144-9e846c8455a9",
+                      "id":  "node-webhook-seeker-id",
                       "name":  "Webhook - Seeker ID Verification"
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const webhookItem = $input.first()?.json ?? {};\r\nconst payload = webhookItem.body ?? webhookItem;\r\nconst event = String(payload?.event || '').toLowerCase();\r\n\r\nif (event && event !== 'seeker_id_uploaded') {\r\n  return [{ json: { skipped: true, reason: 'Unsupported event: ' + event } }];\r\n}\r\n\r\nconst asString = (value) => String(value ?? '').trim();\r\nconst normalizeDigits = (value) => String(value || '').replace(/\\D/g, '');\r\n\r\nconst normalizeTextForCompare = (value) =>\r\n  String(value || '')\r\n    .normalize('NFKD')\r\n    .replace(/[\\u0300-\\u036f]/g, '')\r\n    .toLowerCase()\r\n    .replace(/[^a-z0-9\\s]/g, ' ')\r\n    .replace(/\\s+/g, ' ')\r\n    .trim();\r\n\r\nconst parseJsonSafely = (value, fallback = {}) => {\r\n  if (value && typeof value === 'object') {\r\n    return value;\r\n  }\r\n\r\n  if (typeof value !== 'string' || value.trim() === '') {\r\n    return fallback;\r\n  }\r\n\r\n  try {\r\n    return JSON.parse(value);\r\n  } catch {\r\n    return fallback;\r\n  }\r\n};\r\n\r\nconst toBodyString = (value) => {\r\n  if (typeof value === 'string') {\r\n    return value;\r\n  }\r\n\r\n  try {\r\n    return JSON.stringify(value ?? {});\r\n  } catch {\r\n    return String(value ?? '');\r\n  }\r\n};\r\n\r\nconst parseQrPayload = (value) => {\r\n  const raw = asString(value);\r\n\r\n  if (!raw) {\r\n    return null;\r\n  }\r\n\r\n  const parts = raw.split('|').map((part) => asString(part));\r\n\r\n  if (parts.length < 4) {\r\n    return null;\r\n  }\r\n\r\n  const [fullName, qcIdRaw, birthdateRaw, genderRaw] = parts;\n  const qcIdDigits = normalizeDigits(qcIdRaw);\n  const birthdate = asString(birthdateRaw);\n  const gender = asString(genderRaw).toUpperCase();\r\n\r\n  if (!fullName || !qcIdDigits) {\r\n    return null;\r\n  }\r\n\r\n  return {\r\n    raw,\r\n    fullName,\r\n    qcIdRaw,\r\n    qcIdDigits,\r\n    birthdate,\r\n    gender,\r\n  };\r\n};\r\n\r\nconst buildOverlayLines = (parsedResults) =>\r\n  parsedResults.flatMap((result) => {\r\n    const lines = Array.isArray(result?.TextOverlay?.Lines) ? result.TextOverlay.Lines : [];\r\n\r\n    return lines\r\n      .map((line) => {\r\n        const words = Array.isArray(line?.Words) ? line.Words : [];\r\n        const text = asString(words.map((word) => word?.WordText ?? '').join(' '));\r\n        const topValues = words.map((word) => Number(word?.Top)).filter(Number.isFinite);\r\n        const top = topValues.length > 0 ? Math.min(...topValues) : Number(line?.MinTop);\r\n\r\n        return {\r\n          text,\r\n          top: Number.isFinite(top) ? top : null,\r\n        };\r\n      })\r\n      .filter((line) => line.text);\r\n  });\r\n\r\nconst extractQcIdCandidatesFromText = (text) => {\r\n  const rawText = String(text || '');\r\n  const matches = [\r\n    ...rawText.matchAll(/\\b\\d{3}[\\s-]*\\d{3}[\\s-]*\\d{8}\\b/g),\r\n    ...rawText.matchAll(/\\b\\d{14}\\b/g),\r\n  ].map((match) => match[0]);\r\n\r\n  return Array.from(new Set(matches.map((value) => asString(value)).filter(Boolean)))\r\n    .map((raw) => ({\r\n      raw,\r\n      digits: normalizeDigits(raw),\r\n      has338Format: /\\d{3}[\\s-]*\\d{3}[\\s-]*\\d{8}/.test(raw),\r\n    }))\r\n    .filter((candidate) => candidate.digits.length === 14);\r\n};\r\n\r\nconst rankQcIdCandidates = (parsedText, overlayLines, expectedQcId) => {\r\n  const maxTop = Math.max(1, ...overlayLines.map((line) => line.top).filter(Number.isFinite));\r\n  const byDigits = new Map();\r\n\r\n  const scoreCandidate = (candidate) => {\r\n    let score = 0;\r\n\r\n    if (expectedQcId.length === 14 && candidate.digits === expectedQcId) {\r\n      score += 100;\r\n    }\r\n\r\n    if (candidate.has338Format) {\r\n      score += 20;\r\n    }\r\n\r\n    if (candidate.lowerSection) {\r\n      score += 10;\r\n    }\r\n\r\n    if (candidate.source === 'overlay') {\r\n      score += 5;\r\n    }\r\n\r\n    return score;\r\n  };\r\n\r\n  const rememberCandidate = (candidate, sourceText, top, source) => {\r\n    const normalizedCandidate = {\r\n      ...candidate,\r\n      sourceText: sourceText || candidate.raw,\r\n      source,\r\n      top: Number.isFinite(top) ? top : null,\r\n      lowerSection: Number.isFinite(top) ? top >= maxTop * 0.45 : false,\r\n    };\r\n    const existing = byDigits.get(normalizedCandidate.digits);\r\n\r\n    if (!existing || scoreCandidate(normalizedCandidate) > scoreCandidate(existing)) {\r\n      byDigits.set(normalizedCandidate.digits, normalizedCandidate);\r\n    }\r\n  };\r\n\r\n  overlayLines.forEach((line) => {\r\n    extractQcIdCandidatesFromText(line.text).forEach((candidate) => {\r\n      rememberCandidate(candidate, line.text, line.top, 'overlay');\r\n    });\r\n  });\r\n\r\n  extractQcIdCandidatesFromText(parsedText).forEach((candidate) => {\r\n    rememberCandidate(candidate, candidate.raw, null, 'full_text');\r\n  });\r\n\r\n  const candidates = Array.from(byDigits.values()).sort((left, right) => scoreCandidate(right) - scoreCandidate(left));\r\n\r\n  return {\r\n    candidates,\r\n    selected: candidates[0] || null,\r\n  };\r\n};\r\n\r\nlet userId = Number(payload.user_id || 0);\r\nconst callbackUrl = asString(payload.callback_url);\r\nconst documentUrl = asString(payload.document_url);\r\nconst seekerName = asString(payload.name);\r\nconst submittedQcIdRaw = asString(payload.expected_qc_id);\r\nconst expectedQcId = normalizeDigits(submittedQcIdRaw);\r\nconst callbackSecret = asString($env.N8N_SEEKER_ID_VERIFICATION_CALLBACK_SECRET);\r\nconst ocrApiKey = asString($env.OCR_SPACE_API_KEY);\r\n\r\nconst httpRequest = async (requestOptions) => {\r\n  if (typeof helpers === 'undefined' || !helpers || typeof helpers.httpRequest !== 'function') {\r\n    throw new Error('helpers.httpRequest is unavailable in this n8n runtime.');\r\n  }\r\n\r\n  return await helpers.httpRequest(requestOptions);\r\n};\r\n\r\nconst postCallback = async (callbackPayload) => {\r\n  if (!callbackUrl) {\r\n    return {\r\n      statusCode: 0,\r\n      body: 'Missing callback_url in webhook payload. Callback not sent.',\r\n    };\r\n  }\r\n\r\n  const callbackHeaders = {\r\n    'Content-Type': 'application/json',\r\n  };\r\n\r\n  if (callbackSecret) {\r\n    callbackHeaders['X-CityJobLink-Webhook-Secret'] = callbackSecret;\r\n  }\r\n\r\n  try {\r\n    const callbackResponse = await httpRequest({\r\n      method: 'POST',\r\n      url: callbackUrl,\r\n      headers: callbackHeaders,\r\n      body: callbackPayload,\r\n      json: true,\r\n      returnFullResponse: true,\r\n      timeout: 30000,\r\n    });\r\n\r\n    const statusCode = Number(callbackResponse?.statusCode || callbackResponse?.status || 0);\r\n    const body = toBodyString(callbackResponse?.body);\r\n\r\n    return { statusCode, body };\r\n  } catch (error) {\r\n    return {\r\n      statusCode: 0,\r\n      body: 'Callback request failed: ' + (error?.message || String(error)),\r\n    };\r\n  }\r\n};\r\n\r\nconst finalize = async ({\r\n  status,\r\n  reason,\r\n  confidence = 0,\r\n  referenceId = null,\r\n  extractedQcId = null,\r\n  extractedName = null,\r\n  ocrText = null,\r\n  detectedQcIdCandidates = [],\r\n  ocrQcIdCandidates = [],\r\n  qualificationChecks = {},\r\n  selectedQcIdLine = null,\r\n  selectedQcIdSource = null,\r\n  qrScan = null,\r\n}) => {\r\n  const callbackPayload = {\r\n    user_id: Number.isFinite(userId) && userId > 0 ? userId : null,\r\n    status,\r\n    reason,\r\n    confidence,\r\n    provider: 'ocr.space',\r\n    reference_id: referenceId,\r\n    extracted_qc_id: extractedQcId,\r\n    extracted_name: extractedName,\r\n    ocr_text: ocrText,\r\n  };\r\n\r\n  const callbackResult = await postCallback(callbackPayload);\r\n\r\n  return [\r\n    {\r\n      json: {\r\n        user_id: callbackPayload.user_id,\r\n        status,\r\n        reason,\r\n        confidence,\r\n        provider: callbackPayload.provider,\r\n        reference_id: referenceId,\r\n        submitted_qc_id: submittedQcIdRaw || null,\r\n        extracted_qc_id: extractedQcId,\r\n        extracted_name: extractedName,\r\n        ocr_text: ocrText,\r\n        detected_qc_id_candidates: detectedQcIdCandidates,\r\n        ocr_qc_id_candidates: ocrQcIdCandidates,\r\n        qualification_checks: qualificationChecks,\r\n        selected_qc_id_line: selectedQcIdLine,\r\n        selected_qc_id_source: selectedQcIdSource,\r\n        qr_scan: qrScan,\r\n        callback_status_code: callbackResult.statusCode,\r\n        callback_response: callbackResult.body,\r\n      },\r\n    },\r\n  ];\r\n};\r\n\r\ntry {\r\n  if (!Number.isFinite(userId) || userId <= 0) {\r\n    userId = 0;\r\n    return await finalize({\r\n      status: 'error',\r\n      reason: 'Missing or invalid user_id in webhook payload',\r\n      confidence: 0,\r\n    });\r\n  }\r\n\r\n  if (!callbackUrl) {\r\n    return await finalize({\r\n      status: 'error',\r\n      reason: 'Missing callback_url in webhook payload',\r\n      confidence: 0,\r\n    });\r\n  }\r\n\r\n  if (!documentUrl) {\r\n    return await finalize({\r\n      status: 'error',\r\n      reason: 'Missing document_url in webhook payload',\r\n      confidence: 0,\r\n    });\r\n  }\r\n\r\n  if (!ocrApiKey) {\r\n    return await finalize({\r\n      status: 'error',\r\n      reason: 'OCR provider is not configured. Set OCR_SPACE_API_KEY.',\r\n      confidence: 0,\r\n    });\r\n  }\r\n\r\n  const qrScan = {\r\n    attempted: true,\r\n    provider: 'api.qrserver.com',\r\n    payload_raw: null,\r\n    full_name: null,\r\n    qc_id_raw: null,\r\n    qc_id_digits: null,\r\n    birthdate: null,\r\n    gender: null,\r\n    error: null,\r\n  };\r\n\r\n  try {\r\n    const qrResponse = await httpRequest({\r\n      method: 'GET',\r\n      url: 'https://api.qrserver.com/v1/read-qr-code/',\r\n      qs: {\r\n        fileurl: documentUrl,\r\n        outputformat: 'json',\r\n      },\r\n      returnFullResponse: true,\r\n      timeout: 30000,\r\n    });\r\n\r\n    const qrStatusCode = Number(qrResponse?.statusCode || qrResponse?.status || 0);\r\n    const qrBodyString = toBodyString(qrResponse?.body);\r\n\r\n    if (qrStatusCode >= 200 && qrStatusCode < 300) {\r\n      const qrJson = parseJsonSafely(qrResponse?.body, parseJsonSafely(qrBodyString, []));\r\n      const qrEntry = Array.isArray(qrJson) ? qrJson[0] : null;\r\n      const qrSymbol = Array.isArray(qrEntry?.symbol) ? qrEntry.symbol[0] : null;\r\n      qrScan.payload_raw = asString(qrSymbol?.data);\r\n      qrScan.error = asString(qrSymbol?.error) || null;\r\n\r\n      const qrPayload = parseQrPayload(qrScan.payload_raw);\r\n      if (qrPayload) {\r\n        qrScan.full_name = qrPayload.fullName;\r\n        qrScan.qc_id_raw = qrPayload.qcIdRaw;\r\n        qrScan.qc_id_digits = qrPayload.qcIdDigits;\r\n        qrScan.birthdate = qrPayload.birthdate;\r\n        qrScan.gender = qrPayload.gender;\r\n        qrScan.error = null;\r\n      } else if (qrScan.payload_raw && !qrScan.error) {\r\n        qrScan.error = 'QR payload format was not FULLNAME|QCID|BIRTHDATE|GENDER.';\r\n      }\r\n    } else {\r\n      qrScan.error = 'QR scanner request failed: ' + (qrBodyString || ('HTTP ' + qrStatusCode));\r\n    }\r\n  } catch (error) {\r\n    qrScan.error = 'QR scanner request failed: ' + (error?.message || String(error));\r\n  }\r\n\r\n  let parsedText = '';\r\n  let ocrReferenceId = null;\r\n  let overlayLines = [];\r\n\r\n  try {\r\n    const ocrResponse = await httpRequest({\r\n      method: 'POST',\r\n      url: 'https://api.ocr.space/parse/imageurl',\r\n      body: {\r\n        apikey: ocrApiKey,\r\n        url: documentUrl,\r\n        language: 'eng',\r\n        isOverlayRequired: true,\r\n        scale: true,\r\n      },\r\n      returnFullResponse: true,\r\n      timeout: 45000,\r\n    });\r\n\r\n    const ocrStatusCode = Number(ocrResponse?.statusCode || ocrResponse?.status || 0);\r\n    const ocrBodyString = toBodyString(ocrResponse?.body);\r\n\r\n    if (ocrStatusCode < 200 || ocrStatusCode >= 300) {\r\n      return await finalize({\r\n        status: 'error',\r\n        reason: 'OCR provider request failed: ' + (ocrBodyString || ('HTTP ' + ocrStatusCode)),\r\n        confidence: 0,\r\n        referenceId: String(ocrStatusCode || ''),\r\n        qrScan,\r\n      });\r\n    }\r\n\r\n    const ocrJson = parseJsonSafely(ocrResponse?.body, parseJsonSafely(ocrBodyString, {}));\r\n    ocrReferenceId = asString(ocrJson?.OCRExitCode || '');\r\n\r\n    const parsedResults = Array.isArray(ocrJson?.ParsedResults) ? ocrJson.ParsedResults : [];\r\n    parsedText = parsedResults.map((result) => String(result?.ParsedText || '')).join('\\n').trim();\r\n    overlayLines = buildOverlayLines(parsedResults);\r\n  } catch (error) {\r\n    return await finalize({\r\n      status: 'error',\r\n      reason: 'OCR execution failed: ' + (error?.message || String(error)),\r\n      confidence: 0,\r\n      qrScan,\r\n    });\r\n  }\r\n\r\n  const normalizedText = normalizeTextForCompare(parsedText);\r\n  const normalizedExpectedName = normalizeTextForCompare(seekerName);\r\n  const expectedNameTokens = normalizedExpectedName.split(' ').filter((token) => token.length >= 2);\r\n  const requiredNameTokens =\r\n    expectedNameTokens.length >= 2\r\n      ? Array.from(new Set([expectedNameTokens[0], expectedNameTokens[expectedNameTokens.length - 1]]))\r\n      : expectedNameTokens;\r\n\r\n  const exactOcrNameMatched =\r\n    normalizedExpectedName.length > 0 && normalizedText.includes(normalizedExpectedName);\r\n  const tokenOcrNameMatched =\r\n    requiredNameTokens.length > 0 && requiredNameTokens.every((token) => normalizedText.includes(token));\r\n  const ocrNameMatched = exactOcrNameMatched || tokenOcrNameMatched;\r\n\r\n  const normalizedQrName = normalizeTextForCompare(qrScan.full_name || '');\r\n  const qrNameMatched =\n    normalizedExpectedName.length > 0 &&\n    normalizedQrName.length > 0 &&\n    (normalizedQrName.includes(normalizedExpectedName) || normalizedExpectedName.includes(normalizedQrName));\r\n\r\n  const nameMatched = qrScan.full_name ? qrNameMatched : ocrNameMatched;\r\n  const titleMatched =\r\n    normalizedText.includes('citizen card') && normalizedText.includes('kasama sa pag unlad');\r\n\r\n  const { candidates: ocrQcIdCandidates, selected: selectedOcrQcCandidate } = rankQcIdCandidates(\r\n    parsedText,\r\n    overlayLines,\r\n    expectedQcId,\r\n  );\r\n  const ocrExtractedQcId = selectedOcrQcCandidate?.digits || '';\r\n  const ocrIdFormatMatched = ocrQcIdCandidates.some(\r\n    (candidate) => candidate.has338Format && candidate.digits.length === 14,\r\n  );\r\n  const ocrIdMatched = expectedQcId.length === 14 && ocrQcIdCandidates.some((candidate) => candidate.digits === expectedQcId);\r\n\r\n  const qrIdFormatMatched = Boolean(qrScan.qc_id_digits) && qrScan.qc_id_digits.length === 14;\r\n  const qrIdMatched = expectedQcId.length === 14 && qrScan.qc_id_digits === expectedQcId;\r\n\r\n  const extractedQcId = qrScan.qc_id_digits || ocrExtractedQcId;\r\n  const selectedQcIdSource = qrScan.qc_id_digits ? 'qr_secure' : selectedOcrQcCandidate ? 'ocr' : null;\r\n  const idFormatMatched = qrScan.qc_id_digits ? qrIdFormatMatched : ocrIdFormatMatched;\r\n  const idMatched = qrScan.qc_id_digits ? qrIdMatched : ocrIdMatched;\r\n  const selectedQcIdLine = qrScan.payload_raw || selectedOcrQcCandidate?.sourceText || null;\r\n  const detectedQcIdCandidates = Array.from(\r\n    new Set([\r\n      ...(qrScan.qc_id_raw ? [qrScan.qc_id_raw] : []),\r\n      ...ocrQcIdCandidates.map((candidate) => candidate.raw),\r\n    ]),\r\n  );\r\n\r\n  const qualificationChecks = {\r\n    citizen_card_title: titleMatched,\r\n    qr_payload_decoded: Boolean(qrScan.full_name && qrScan.qc_id_digits),\r\n    qr_name_matches_submitted: qrNameMatched,\r\n    cardholder_name: nameMatched,\r\n    qc_id_has_14_digits: idFormatMatched,\r\n    qc_id_format_3_3_8: idFormatMatched,\r\n    qc_id_matches_submitted: idMatched,\r\n    qc_id_found_lower_section: qrScan.qc_id_digits ? true : selectedOcrQcCandidate?.lowerSection || false,\r\n    qcid_source: selectedQcIdSource,\r\n  };\r\n\r\n  const denialReasons = [];\r\n\r\n  if (!parsedText) {\r\n    denialReasons.push('OCR could not read any text from the uploaded ID. Please upload a clearer image or PDF.');\r\n  }\r\n\r\n  if (!titleMatched) {\r\n    denialReasons.push('The uploaded ID must show both \"Citizen Card\" and \"Kasama sa pag-unlad\".');\r\n  }\r\n\r\n  if (normalizedExpectedName.length === 0) {\r\n    denialReasons.push('The submitted seeker name is missing, so name matching could not be completed.');\r\n  } else if (!nameMatched) {\r\n    denialReasons.push(\r\n      'The name on the uploaded ID does not match the registered seeker name (' + seekerName + ').',\r\n    );\r\n  }\r\n\r\n  if (expectedQcId.length === 0) {\r\n    denialReasons.push('The submitted QC ID number is missing, so ID matching could not be completed.');\r\n  } else if (expectedQcId.length !== 14) {\r\n    denialReasons.push('The submitted QC ID must be 14 digits in 3-3-8 format (example: 078 512 57856458).');\r\n  } else if (!idFormatMatched) {\r\n    denialReasons.push('The uploaded card does not show a 14-digit QC ID in the 3-3-8 format (example: 078 512 57856458).');\r\n  } else if (!idMatched) {\r\n    denialReasons.push(\r\n      'The QC ID number on the uploaded card does not match the submitted QC ID (' + submittedQcIdRaw + ').',\r\n    );\r\n  }\r\n\r\n  const status = denialReasons.length === 0 ? 'verified' : 'rejected';\r\n  const reason =\r\n    denialReasons.length === 0\r\n      ? 'Verified: Citizen Card title, cardholder name, and 14-digit QC ID all matched' +\r\n        (selectedQcIdSource === 'qr_secure' ? ' using the QR payload.' : ' using OCR fallback.')\r\n      : denialReasons.join(' ');\r\n  const confidence = denialReasons.length === 0 ? 0.98 : Math.max(0.2, 0.92 - denialReasons.length * 0.18);\r\n\r\n  return await finalize({\r\n    status,\r\n    reason,\r\n    confidence,\r\n    referenceId: ocrReferenceId || null,\r\n    extractedQcId: extractedQcId || null,\r\n    extractedName: nameMatched ? (qrScan.full_name || seekerName) : null,\r\n    ocrText: parsedText || null,\r\n    detectedQcIdCandidates,\r\n    ocrQcIdCandidates: ocrQcIdCandidates.map((candidate) => candidate.raw),\r\n    qualificationChecks,\r\n    selectedQcIdLine,\r\n    selectedQcIdSource,\r\n    qrScan,\r\n  });\r\n} catch (fatalError) {\r\n  return [\r\n    {\r\n      json: {\r\n        user_id: Number.isFinite(userId) && userId > 0 ? userId : null,\r\n        status: 'error',\r\n        reason: 'Workflow runtime error: ' + (fatalError?.message || String(fatalError)),\r\n        confidence: 0,\r\n        provider: 'ocr.space',\r\n        callback_status_code: 0,\r\n        callback_response: null,\r\n      },\r\n    },\r\n  ];\r\n}"
+                                         "jsCode":  "const webhookItem = $input.first()?.json ?? {};\r\nconst payload = webhookItem.body ?? webhookItem;\r\n\r\nconst asString = (value) =\u003e String(value ?? \u0027\u0027).trim();\r\nconst normalizeDigits = (value) =\u003e String(value ?? \u0027\u0027).replace(/\\D/g, \u0027\u0027);\r\nconst normalizeGenderCode = (value) =\u003e {\r\n  const normalized = asString(value).toUpperCase();\r\n  if (normalized === \u0027M\u0027 || normalized === \u0027MALE\u0027) return \u0027M\u0027;\r\n  if (normalized === \u0027F\u0027 || normalized === \u0027FEMALE\u0027) return \u0027F\u0027;\r\n  return \u0027\u0027;\r\n};\r\nconst normalizeBirthdateYYMMDD = (value) =\u003e {\r\n  const digits = normalizeDigits(value);\r\n  return /^\\d{6}$/.test(digits) ? digits : \u0027\u0027;\r\n};\r\n\r\nconst userId = Number(payload.user_id || 0);\r\nconst callbackUrl = asString(payload.callback_url);\r\nconst documentUrl = asString(payload.document_url);\r\nconst seekerName = asString(payload.name);\r\nconst submittedQcIdRaw = asString(payload.expected_qc_id);\r\nconst expectedQcId = normalizeDigits(submittedQcIdRaw);\r\nconst expectedBirthdate = normalizeBirthdateYYMMDD(payload.expected_birthdate);\r\nconst expectedGender = normalizeGenderCode(payload.expected_gender);\r\n\r\nconst precheckErrors = [];\r\nif (!Number.isFinite(userId) || userId \u003c= 0) precheckErrors.push(\u0027Missing or invalid user_id in webhook payload.\u0027);\r\nif (!callbackUrl) precheckErrors.push(\u0027Missing callback_url in webhook payload.\u0027);\r\nif (!documentUrl) precheckErrors.push(\u0027Missing document_url in webhook payload.\u0027);\r\nif (!seekerName) precheckErrors.push(\u0027Missing seeker name in webhook payload.\u0027);\r\nif (!submittedQcIdRaw) precheckErrors.push(\u0027Missing expected_qc_id in webhook payload.\u0027);\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      event: asString(payload.event || \u0027seeker_id_uploaded\u0027).toLowerCase(),\r\n      user_id: Number.isFinite(userId) ? userId : 0,\r\n      callback_url: callbackUrl,\r\n      document_url: documentUrl,\r\n      seeker_name: seekerName,\r\n      submitted_qc_id: submittedQcIdRaw,\r\n      expected_qc_id: expectedQcId,\r\n      expected_birthdate: expectedBirthdate,\r\n      expected_gender: expectedGender,\r\n      precheck_errors: precheckErrors,\r\n    },\r\n  },\r\n];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
                       "position":  [
-                                       560,
-                                       260
+                                       480,
+                                       320
                                    ],
-                      "id":  "3b9057e4-bfd8-4d24-b8be-d9f96f2b35b8",
-                      "name":  "OCR + Evaluate + Callback"
+                      "id":  "node-prepare-payload",
+                      "name":  "Prepare Payload"
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const item = $input.first()?.json || {};\r\nconst checks = item.qualification_checks || {};\r\nconst qrScan = item.qr_scan || {};\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      _debug_extraction_report: {\r\n        user_id: item.user_id,\r\n        status: item.status,\r\n        confidence_score: item.confidence,\r\n        submitted_qc_id: item.submitted_qc_id || \u0027(not provided)\u0027,\r\n        qualification_rules: {\r\n          required_title: \u0027Citizen Card + Kasama sa pag-unlad\u0027,\r\n          required_name_match: true,\r\n          required_qc_id_format: \u002714 digits in 3-3-8 format\u0027,\r\n          preferred_qcid_source: \u0027QR payload FULLNAME|QCID|BIRTHDATE|GENDER\u0027,\r\n        },\r\n        qualification_checks: {\r\n          citizen_card_title: checks.citizen_card_title || false,\r\n          qr_payload_decoded: checks.qr_payload_decoded || false,\r\n          qr_name_matches_submitted: checks.qr_name_matches_submitted || false,\r\n          cardholder_name: checks.cardholder_name || false,\r\n          qc_id_has_14_digits: checks.qc_id_has_14_digits || false,\r\n          qc_id_format_3_3_8: checks.qc_id_format_3_3_8 || false,\r\n          qc_id_matches_submitted: checks.qc_id_matches_submitted || false,\r\n          qc_id_found_lower_section: checks.qc_id_found_lower_section || false,\r\n          qcid_source: checks.qcid_source || \u0027(none)\u0027,\r\n        },\r\n        qr_scan: {\r\n          provider: qrScan.provider || \u0027(not attempted)\u0027,\r\n          payload_raw: qrScan.payload_raw || \u0027(not found)\u0027,\r\n          full_name: qrScan.full_name || \u0027(not decoded)\u0027,\r\n          qc_id_raw: qrScan.qc_id_raw || \u0027(not decoded)\u0027,\r\n          qc_id_digits: qrScan.qc_id_digits || \u0027(not decoded)\u0027,\r\n          birthdate: qrScan.birthdate || \u0027(not decoded)\u0027,\r\n          gender: qrScan.gender || \u0027(not decoded)\u0027,\r\n          error: qrScan.error || null,\r\n        },\r\n        extracted_fields: {\r\n          selected_qc_id: item.extracted_qc_id || \u0027(not extracted)\u0027,\r\n          selected_qc_id_source: item.selected_qc_id_source || \u0027(none)\u0027,\r\n          qc_id_candidates: item.detected_qc_id_candidates || [],\r\n          ocr_qc_id_candidates: item.ocr_qc_id_candidates || [],\r\n          qc_id_source_line: item.selected_qc_id_line || \u0027(line not identified)\u0027,\r\n          matched_name: item.extracted_name || \u0027(not matched)\u0027,\r\n          ocr_text_preview: item.ocr_text ? item.ocr_text.substring(0, 300) + (item.ocr_text.length \u003e 300 ? \u0027...\u0027 : \u0027\u0027) : \u0027(no text)\u0027,\r\n          ocr_text_full: item.ocr_text || \u0027(empty)\u0027,\r\n        },\r\n        verification_details: {\r\n          reason: item.reason,\r\n          provider: item.provider || \u0027ocr.space\u0027,\r\n          reference_id: item.reference_id,\r\n        },\r\n        callback_sent: {\r\n          status_code: item.callback_status_code || 0,\r\n          response: item.callback_response || \u0027(not sent)\u0027,\r\n        },\r\n      },\r\n      _message: \u0027QR payload is preferred. If qr_scan.qc_id_digits is empty, the workflow fell back to OCR for QC ID detection.\u0027,\r\n    },\r\n  },\r\n];"
+                                         "method":  "GET",
+                                         "url":  "={{$json.document_url}}",
+                                         "options":  {
+                                                         "allowUnauthorizedCerts":  true,
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "responseFormat":  "file",
+                                                                                           "outputPropertyName":  "id_file",
+                                                                                           "neverError":  true
+                                                                                       }
+                                                                      }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  3,
+                      "position":  [
+                                       740,
+                                       320
+                                   ],
+                      "id":  "node-download-document",
+                      "name":  "Download ID Document",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://api.qrserver.com/v1/read-qr-code/",
+                                         "sendBody":  true,
+                                         "contentType":  "multipart-form-data",
+                                         "bodyParameters":  {
+                                                                "parameters":  [
+                                                                                   {
+                                                                                       "parameterType":  "formBinaryData",
+                                                                                       "name":  "file",
+                                                                                       "inputDataFieldName":  "id_file"
+                                                                                   },
+                                                                                   {
+                                                                                       "parameterType":  "formData",
+                                                                                       "name":  "outputformat",
+                                                                                       "value":  "json"
+                                                                                   }
+                                                                               ]
+                                                            },
+                                         "options":  {
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "responseFormat":  "json",
+                                                                                           "fullResponse":  true,
+                                                                                           "neverError":  true
+                                                                                       }
+                                                                      }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  3,
+                      "position":  [
+                                       1020,
+                                       220
+                                   ],
+                      "id":  "node-qr-api",
+                      "name":  "QR API - Read Binary",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "https://api.ocr.space/parse/image",
+                                         "sendHeaders":  true,
+                                         "specifyHeaders":  "keypair",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "apikey",
+                                                                                         "value":  "={{$env.OCR_SPACE_API_KEY}}"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "contentType":  "multipart-form-data",
+                                         "bodyParameters":  {
+                                                                "parameters":  [
+                                                                                   {
+                                                                                       "parameterType":  "formBinaryData",
+                                                                                       "name":  "file",
+                                                                                       "inputDataFieldName":  "id_file"
+                                                                                   },
+                                                                                   {
+                                                                                       "parameterType":  "formData",
+                                                                                       "name":  "language",
+                                                                                       "value":  "eng"
+                                                                                   },
+                                                                                   {
+                                                                                       "parameterType":  "formData",
+                                                                                       "name":  "isOverlayRequired",
+                                                                                       "value":  "true"
+                                                                                   },
+                                                                                   {
+                                                                                       "parameterType":  "formData",
+                                                                                       "name":  "scale",
+                                                                                       "value":  "true"
+                                                                                   }
+                                                                               ]
+                                                            },
+                                         "options":  {
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "responseFormat":  "json",
+                                                                                           "fullResponse":  true,
+                                                                                           "neverError":  true
+                                                                                       }
+                                                                      }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  3,
+                      "position":  [
+                                       1020,
+                                       420
+                                   ],
+                      "id":  "node-ocr-api",
+                      "name":  "OCR API - Read Binary",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const asString = (value) =\u003e String(value ?? \u0027\u0027).trim();\r\nconst parseJsonSafely = (value, fallback) =\u003e {\r\n  if (value \u0026\u0026 typeof value === \u0027object\u0027) return value;\r\n  if (typeof value !== \u0027string\u0027 || value.trim() === \u0027\u0027) return fallback;\r\n  try {\r\n    return JSON.parse(value);\r\n  } catch {\r\n    return fallback;\r\n  }\r\n};\r\n\r\nconst response = $input.first()?.json ?? {};\r\nconst statusCode = Number(response.statusCode ?? response.status ?? 0);\r\nconst body = response.body ?? response;\r\nconst qrJson = parseJsonSafely(body, []);\r\nconst qrEntry = Array.isArray(qrJson) ? qrJson[0] : null;\r\nconst qrSymbol = Array.isArray(qrEntry?.symbol) ? qrEntry.symbol[0] : null;\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      qr_status_code: Number.isFinite(statusCode) ? statusCode : 0,\r\n      qr_body: body,\r\n      qr_payload_raw: asString(qrSymbol?.data) || null,\r\n      qr_symbol_error: asString(qrSymbol?.error) || null,\r\n    },\r\n  },\r\n];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
                       "position":  [
-                                       860,
-                                       260
+                                       1260,
+                                       220
                                    ],
-                      "id":  "debug-extraction-report-node",
+                      "id":  "node-parse-qr",
+                      "name":  "Parse QR Response"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const asString = (value) =\u003e String(value ?? \u0027\u0027).trim();\r\nconst parseJsonSafely = (value, fallback) =\u003e {\r\n  if (value \u0026\u0026 typeof value === \u0027object\u0027) return value;\r\n  if (typeof value !== \u0027string\u0027 || value.trim() === \u0027\u0027) return fallback;\r\n  try {\r\n    return JSON.parse(value);\r\n  } catch {\r\n    return fallback;\r\n  }\r\n};\r\n\r\nconst response = $input.first()?.json ?? {};\r\nconst statusCode = Number(response.statusCode ?? response.status ?? 0);\r\nconst body = response.body ?? response;\r\nconst ocrJson = parseJsonSafely(body, {});\r\nconst parsedResults = Array.isArray(ocrJson?.ParsedResults) ? ocrJson.ParsedResults : [];\r\nconst parsedText = parsedResults\r\n  .map((result) =\u003e asString(result?.ParsedText))\r\n  .filter(Boolean)\r\n  .join(\u0027\\n\u0027)\r\n  .trim();\r\nconst errorMessage = Array.isArray(ocrJson?.ErrorMessage)\r\n  ? ocrJson.ErrorMessage.map((item) =\u003e asString(item)).filter(Boolean).join(\u0027 | \u0027)\r\n  : asString(ocrJson?.ErrorMessage);\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ocr_status_code: Number.isFinite(statusCode) ? statusCode : 0,\r\n      ocr_body: body,\r\n      ocr_reference_id: asString(ocrJson?.OCRExitCode || \u0027\u0027),\r\n      ocr_parsed_results: parsedResults,\r\n      ocr_text: parsedText || null,\r\n      ocr_error_message: errorMessage || null,\r\n      ocr_is_erred_on_processing: Boolean(ocrJson?.IsErroredOnProcessing),\r\n    },\r\n  },\r\n];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1260,
+                                       420
+                                   ],
+                      "id":  "node-parse-ocr",
+                      "name":  "Parse OCR Response"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "combine",
+                                         "combineBy":  "combineByPosition",
+                                         "options":  {
+                                                         "includeUnpaired":  true
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.merge",
+                      "typeVersion":  3,
+                      "position":  [
+                                       1500,
+                                       320
+                                   ],
+                      "id":  "node-merge-qr-ocr",
+                      "name":  "Merge QR + OCR"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "combine",
+                                         "combineBy":  "combineByPosition",
+                                         "options":  {
+                                                         "includeUnpaired":  true
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.merge",
+                      "typeVersion":  3,
+                      "position":  [
+                                       1740,
+                                       320
+                                   ],
+                      "id":  "node-merge-payload-results",
+                      "name":  "Merge Payload + Scan Results"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const data = $input.first()?.json ?? {};\r\n\r\nconst asString = (value) =\u003e String(value ?? \u0027\u0027).trim();\r\nconst normalizeDigits = (value) =\u003e String(value || \u0027\u0027).replace(/\\D/g, \u0027\u0027);\r\nconst normalizeGenderCode = (value) =\u003e {\r\n  const normalized = asString(value).toUpperCase();\r\n  if (normalized === \u0027M\u0027 || normalized === \u0027MALE\u0027) return \u0027M\u0027;\r\n  if (normalized === \u0027F\u0027 || normalized === \u0027FEMALE\u0027) return \u0027F\u0027;\r\n  return \u0027\u0027;\r\n};\r\nconst normalizeBirthdateYYMMDD = (value) =\u003e {\r\n  const digits = normalizeDigits(value);\r\n  return /^\\d{6}$/.test(digits) ? digits : \u0027\u0027;\r\n};\r\nconst normalizeNameToken = (value) =\u003e\r\n  String(value || \u0027\u0027)\r\n    .normalize(\u0027NFKD\u0027)\r\n    .replace(/[\\u0300-\\u036f]/g, \u0027\u0027)\r\n    .toLowerCase()\r\n    .replace(/[^a-z0-9]/g, \u0027\u0027);\r\nconst isInitialToken = (value) =\u003e {\r\n  const cleaned = normalizeNameToken(String(value || \u0027\u0027).replace(/\\.+$/, \u0027\u0027));\r\n  return /^[a-z]$/.test(cleaned);\r\n};\r\nconst extractNameTokens = (value) =\u003e\r\n  String(value || \u0027\u0027)\r\n    .split(/[^A-Za-z0-9]+/)\r\n    .map((token) =\u003e normalizeNameToken(token))\r\n    .filter(Boolean);\r\nconst normalizeTextForCompare = (value) =\u003e\r\n  String(value || \u0027\u0027)\r\n    .normalize(\u0027NFKD\u0027)\r\n    .replace(/[\\u0300-\\u036f]/g, \u0027\u0027)\r\n    .toLowerCase()\r\n    .replace(/[^a-z0-9\\s]/g, \u0027 \u0027)\r\n    .replace(/\\s+/g, \u0027 \u0027)\r\n    .trim();\r\n\r\nconst parseQrNameFormat = (value) =\u003e {\r\n  const raw = asString(value);\r\n  if (!raw) {\r\n    return { isValid: false, error: \u0027QR payload full name is empty.\u0027 };\r\n  }\r\n\r\n  const commaIndex = raw.indexOf(\u0027,\u0027);\r\n  if (commaIndex \u003c 1) {\r\n    return { isValid: false, error: \u0027QR name must use LAST, FIRST MIDDLE format.\u0027 };\r\n  }\r\n\r\n  const familyName = asString(raw.slice(0, commaIndex));\r\n  const rightTokens = asString(raw.slice(commaIndex + 1)).split(/\\s+/).filter(Boolean);\r\n\r\n  if (!familyName || rightTokens.length \u003c 2) {\r\n    return {\r\n      isValid: false,\r\n      error: \u0027QR name must include full first and given names plus a trailing surname token.\u0027,\r\n    };\r\n  }\r\n\r\n  const givenTokens = rightTokens.slice(0, -1);\r\n  const trailingTokenRaw = rightTokens[rightTokens.length - 1];\r\n  const hasInitialInGivenTokens = givenTokens.some((token) =\u003e isInitialToken(token));\r\n\r\n  if (hasInitialInGivenTokens) {\r\n    return {\r\n      isValid: false,\r\n      error:\r\n        \u0027QR name given tokens are invalid. Use full first/given names; only trailing token may be abbreviated (e.g., M.).\u0027,\r\n    };\r\n  }\r\n\r\n  const trailingTokenNormalized = normalizeNameToken(trailingTokenRaw);\r\n\r\n  return {\r\n    isValid: true,\r\n    familyName,\r\n    givenTokens,\r\n    trailingTokenRaw,\r\n    trailingTokenNormalized,\r\n    trailingTokenInitial: trailingTokenNormalized.charAt(0) || \u0027\u0027,\r\n    trailingTokenIsInitial: isInitialToken(trailingTokenRaw),\r\n  };\r\n};\r\n\r\nconst parseQrPayload = (value) =\u003e {\r\n  const raw = asString(value);\r\n  if (!raw) return null;\r\n\r\n  const parts = raw.split(\u0027|\u0027).map((part) =\u003e asString(part));\r\n  if (parts.length \u003c 4) {\r\n    return {\r\n      isValid: false,\r\n      error: \u0027QR payload format was not FULLNAME|QCID|BIRTHDATE|GENDER.\u0027,\r\n    };\r\n  }\r\n\r\n  const [fullName, qcIdRaw, birthdateRaw, genderRaw] = parts;\r\n  const nameFormat = parseQrNameFormat(fullName);\r\n  const qcIdDigits = normalizeDigits(qcIdRaw);\r\n  const birthdate = normalizeBirthdateYYMMDD(birthdateRaw);\r\n  const gender = normalizeGenderCode(genderRaw);\r\n\r\n  if (!nameFormat.isValid) {\r\n    return {\r\n      isValid: false,\r\n      error: nameFormat.error,\r\n      nameFormatValid: false,\r\n      nameFormatError: nameFormat.error,\r\n    };\r\n  }\r\n\r\n  if (!fullName || !qcIdDigits) {\r\n    return {\r\n      isValid: false,\r\n      error: \u0027QR payload is missing full name or QC ID.\u0027,\r\n      nameFormatValid: true,\r\n    };\r\n  }\r\n\r\n  if (!birthdate) {\r\n    return {\r\n      isValid: false,\r\n      error: \u0027QR payload birthdate must be YYMMDD.\u0027,\r\n      nameFormatValid: true,\r\n    };\r\n  }\r\n\r\n  if (!gender) {\r\n    return {\r\n      isValid: false,\r\n      error: \u0027QR payload gender must be M or F.\u0027,\r\n      nameFormatValid: true,\r\n    };\r\n  }\r\n\r\n  return {\r\n    isValid: true,\r\n    raw,\r\n    fullName,\r\n    qcIdRaw,\r\n    qcIdDigits,\r\n    birthdate,\r\n    gender,\r\n    nameFormatValid: true,\r\n    nameInfo: nameFormat,\r\n  };\r\n};\r\n\r\nconst buildOverlayLines = (parsedResults) =\u003e\r\n  parsedResults.flatMap((result) =\u003e {\r\n    const lines = Array.isArray(result?.TextOverlay?.Lines) ? result.TextOverlay.Lines : [];\r\n    return lines\r\n      .map((line) =\u003e {\r\n        const words = Array.isArray(line?.Words) ? line.Words : [];\r\n        const text = asString(words.map((word) =\u003e word?.WordText ?? \u0027\u0027).join(\u0027 \u0027));\r\n        const topValues = words.map((word) =\u003e Number(word?.Top)).filter(Number.isFinite);\r\n        const top = topValues.length \u003e 0 ? Math.min(...topValues) : Number(line?.MinTop);\r\n        return {\r\n          text,\r\n          top: Number.isFinite(top) ? top : null,\r\n        };\r\n      })\r\n      .filter((line) =\u003e line.text);\r\n  });\r\n\r\nconst extractQcIdCandidatesFromText = (text) =\u003e {\r\n  const rawText = String(text || \u0027\u0027);\r\n  const matches = [\r\n    ...rawText.matchAll(/\\b\\d{3}[\\s-]*\\d{3}[\\s-]*\\d{8}\\b/g),\r\n    ...rawText.matchAll(/\\b\\d{14}\\b/g),\r\n  ].map((match) =\u003e match[0]);\r\n\r\n  return Array.from(new Set(matches.map((value) =\u003e asString(value)).filter(Boolean)))\r\n    .map((raw) =\u003e ({\r\n      raw,\r\n      digits: normalizeDigits(raw),\r\n      has338Format: /\\d{3}[\\s-]*\\d{3}[\\s-]*\\d{8}/.test(raw),\r\n    }))\r\n    .filter((candidate) =\u003e candidate.digits.length === 14);\r\n};\r\n\r\nconst rankQcIdCandidates = (parsedText, overlayLines, expectedQcId) =\u003e {\r\n  const maxTop = Math.max(1, ...overlayLines.map((line) =\u003e line.top).filter(Number.isFinite));\r\n  const byDigits = new Map();\r\n\r\n  const scoreCandidate = (candidate) =\u003e {\r\n    let score = 0;\r\n    if (expectedQcId.length === 14 \u0026\u0026 candidate.digits === expectedQcId) score += 100;\r\n    if (candidate.has338Format) score += 20;\r\n    if (candidate.lowerSection) score += 10;\r\n    if (candidate.source === \u0027overlay\u0027) score += 5;\r\n    return score;\r\n  };\r\n\r\n  const rememberCandidate = (candidate, sourceText, top, source) =\u003e {\r\n    const normalizedCandidate = {\r\n      ...candidate,\r\n      sourceText: sourceText || candidate.raw,\r\n      source,\r\n      top: Number.isFinite(top) ? top : null,\r\n      lowerSection: Number.isFinite(top) ? top \u003e= maxTop * 0.45 : false,\r\n    };\r\n    const existing = byDigits.get(normalizedCandidate.digits);\r\n\r\n    if (!existing || scoreCandidate(normalizedCandidate) \u003e scoreCandidate(existing)) {\r\n      byDigits.set(normalizedCandidate.digits, normalizedCandidate);\r\n    }\r\n  };\r\n\r\n  overlayLines.forEach((line) =\u003e {\r\n    extractQcIdCandidatesFromText(line.text).forEach((candidate) =\u003e {\r\n      rememberCandidate(candidate, line.text, line.top, \u0027overlay\u0027);\r\n    });\r\n  });\r\n\r\n  extractQcIdCandidatesFromText(parsedText).forEach((candidate) =\u003e {\r\n    rememberCandidate(candidate, candidate.raw, null, \u0027full_text\u0027);\r\n  });\r\n\r\n  const candidates = Array.from(byDigits.values()).sort((left, right) =\u003e scoreCandidate(right) - scoreCandidate(left));\r\n  return { candidates, selected: candidates[0] || null };\r\n};\r\n\r\nconst event = asString(data.event).toLowerCase();\r\nconst userId = Number(data.user_id || 0);\r\nconst callbackUrl = asString(data.callback_url);\r\nconst seekerName = asString(data.seeker_name);\r\nconst submittedQcIdRaw = asString(data.submitted_qc_id);\r\nconst expectedQcId = normalizeDigits(data.expected_qc_id || submittedQcIdRaw);\r\nconst expectedBirthdate = normalizeBirthdateYYMMDD(data.expected_birthdate);\r\nconst expectedGender = normalizeGenderCode(data.expected_gender);\r\nconst precheckErrors = Array.isArray(data.precheck_errors) ? data.precheck_errors.filter(Boolean) : [];\r\n\r\nif (event \u0026\u0026 event !== \u0027seeker_id_uploaded\u0027) {\r\n  return [\r\n    {\r\n      json: {\r\n        user_id: Number.isFinite(userId) \u0026\u0026 userId \u003e 0 ? userId : null,\r\n        callback_url: callbackUrl,\r\n        status: \u0027skipped\u0027,\r\n        reason: \u0027Unsupported event: \u0027 + event,\r\n        confidence: 0,\r\n        provider: \u0027ocr.space\u0027,\r\n      },\r\n    },\r\n  ];\r\n}\r\n\r\nconst qrStatusCode = Number(data.qr_status_code || 0);\r\nconst ocrStatusCode = Number(data.ocr_status_code || 0);\r\n\r\nconst qrScan = {\r\n  attempted: true,\r\n  provider: \u0027api.qrserver.com\u0027,\r\n  payload_raw: asString(data.qr_payload_raw) || null,\r\n  full_name: null,\r\n  name_info: null,\r\n  name_format_valid: null,\r\n  name_format_error: null,\r\n  qc_id_raw: null,\r\n  qc_id_digits: null,\r\n  birthdate: null,\r\n  gender: null,\r\n  error: asString(data.qr_symbol_error) || null,\r\n};\r\n\r\nconst qrPayload = parseQrPayload(qrScan.payload_raw);\r\nif (qrPayload?.isValid) {\r\n  qrScan.full_name = qrPayload.fullName;\r\n  qrScan.name_info = qrPayload.nameInfo || null;\r\n  qrScan.name_format_valid = true;\r\n  qrScan.name_format_error = null;\r\n  qrScan.qc_id_raw = qrPayload.qcIdRaw;\r\n  qrScan.qc_id_digits = qrPayload.qcIdDigits;\r\n  qrScan.birthdate = qrPayload.birthdate;\r\n  qrScan.gender = qrPayload.gender;\r\n  qrScan.error = null;\r\n} else if (qrPayload) {\r\n  qrScan.name_format_valid = qrPayload.nameFormatValid ?? false;\r\n  qrScan.name_format_error = qrPayload.nameFormatError || qrPayload.error || null;\r\n  qrScan.error = qrPayload.error || qrScan.error;\r\n} else if (qrScan.payload_raw \u0026\u0026 !qrScan.error) {\r\n  qrScan.error = \u0027QR payload format was not FULLNAME|QCID|BIRTHDATE|GENDER.\u0027;\r\n}\r\n\r\nconst parsedResults = Array.isArray(data.ocr_parsed_results) ? data.ocr_parsed_results : [];\r\nlet parsedText = asString(data.ocr_text);\r\nif (!parsedText \u0026\u0026 parsedResults.length \u003e 0) {\r\n  parsedText = parsedResults\r\n    .map((result) =\u003e asString(result?.ParsedText))\r\n    .filter(Boolean)\r\n    .join(\u0027\\n\u0027)\r\n    .trim();\r\n}\r\n\r\nconst overlayLines = buildOverlayLines(parsedResults);\r\nconst normalizedText = normalizeTextForCompare(parsedText);\r\nconst normalizedExpectedName = normalizeTextForCompare(seekerName);\r\nconst expectedNameTokens = extractNameTokens(seekerName).filter((token) =\u003e token.length \u003e= 2);\r\nconst requiredNameTokens =\r\n  expectedNameTokens.length \u003e= 2\r\n    ? Array.from(new Set([expectedNameTokens[0], expectedNameTokens[expectedNameTokens.length - 1]]))\r\n    : expectedNameTokens;\r\n\r\nconst exactOcrNameMatched = normalizedExpectedName.length \u003e 0 \u0026\u0026 normalizedText.includes(normalizedExpectedName);\r\nconst tokenOcrNameMatched =\r\n  requiredNameTokens.length \u003e 0 \u0026\u0026 requiredNameTokens.every((token) =\u003e normalizedText.includes(token));\r\nconst ocrNameMatched = exactOcrNameMatched || tokenOcrNameMatched;\r\n\r\nconst qrNameTokens = extractNameTokens(qrScan.full_name || \u0027\u0027);\r\nconst qrTokenSet = new Set(qrNameTokens);\r\nconst qrCoreTokensMatched =\r\n  requiredNameTokens.length \u003e 0 \u0026\u0026 requiredNameTokens.every((token) =\u003e qrTokenSet.has(token));\r\n\r\nlet qrTrailingTokenEquivalent = true;\r\nif (qrScan.name_info?.trailingTokenIsInitial \u0026\u0026 qrScan.name_info.trailingTokenInitial) {\r\n  const trailingMatchesAnyExpected = expectedNameTokens.some(\r\n    (token) =\u003e token.length \u003e= 2 \u0026\u0026 token.startsWith(qrScan.name_info.trailingTokenInitial),\r\n  );\r\n  qrTrailingTokenEquivalent = trailingMatchesAnyExpected || expectedNameTokens.length \u003c 3;\r\n}\r\n\r\nconst qrNameMatched =\r\n  normalizedExpectedName.length \u003e 0 \u0026\u0026\r\n  qrNameTokens.length \u003e 0 \u0026\u0026\r\n  qrCoreTokensMatched \u0026\u0026\r\n  qrTrailingTokenEquivalent \u0026\u0026\r\n  qrScan.name_format_valid !== false;\r\n\r\nconst nameMatched = qrScan.full_name ? qrNameMatched : ocrNameMatched;\r\nconst titleMatched =\r\n  normalizedText.includes(\u0027citizen card\u0027) \u0026\u0026 normalizedText.includes(\u0027kasama sa pag unlad\u0027);\r\n\r\nconst { candidates: ocrQcIdCandidates, selected: selectedOcrQcCandidate } = rankQcIdCandidates(\r\n  parsedText,\r\n  overlayLines,\r\n  expectedQcId,\r\n);\r\nconst ocrExtractedQcId = selectedOcrQcCandidate?.digits || \u0027\u0027;\r\nconst ocrIdFormatMatched = ocrQcIdCandidates.some(\r\n  (candidate) =\u003e candidate.has338Format \u0026\u0026 candidate.digits.length === 14,\r\n);\r\nconst ocrIdMatched = expectedQcId.length === 14 \u0026\u0026 ocrQcIdCandidates.some((candidate) =\u003e candidate.digits === expectedQcId);\r\n\r\nconst qrIdFormatMatched = Boolean(qrScan.qc_id_digits) \u0026\u0026 qrScan.qc_id_digits.length === 14;\r\nconst qrIdMatched = expectedQcId.length === 14 \u0026\u0026 qrScan.qc_id_digits === expectedQcId;\r\n\r\nconst extractedQcId = qrScan.qc_id_digits || ocrExtractedQcId;\r\nconst selectedQcIdSource = qrScan.qc_id_digits ? \u0027qr_secure\u0027 : selectedOcrQcCandidate ? \u0027ocr\u0027 : null;\r\nconst idFormatMatched = qrScan.qc_id_digits ? qrIdFormatMatched : ocrIdFormatMatched;\r\nconst idMatched = qrScan.qc_id_digits ? qrIdMatched : ocrIdMatched;\r\nconst selectedQcIdLine = qrScan.payload_raw || selectedOcrQcCandidate?.sourceText || null;\r\n\r\nconst detectedQcIdCandidates = Array.from(\r\n  new Set([\r\n    ...(qrScan.qc_id_raw ? [qrScan.qc_id_raw] : []),\r\n    ...ocrQcIdCandidates.map((candidate) =\u003e candidate.raw),\r\n  ]),\r\n);\r\n\r\nconst extractedBirthdate = qrScan.birthdate || null;\r\nconst extractedGender = qrScan.gender || null;\r\nconst birthdateMatchesProfile =\r\n  expectedBirthdate \u0026\u0026 extractedBirthdate\r\n    ? expectedBirthdate === normalizeBirthdateYYMMDD(extractedBirthdate)\r\n    : null;\r\nconst genderMatchesProfile =\r\n  expectedGender \u0026\u0026 extractedGender\r\n    ? expectedGender === normalizeGenderCode(extractedGender)\r\n    : null;\r\n\r\nconst qualificationChecks = {\r\n  citizen_card_title: titleMatched,\r\n  qr_payload_decoded: Boolean(qrScan.full_name \u0026\u0026 qrScan.qc_id_digits),\r\n  qr_name_format_valid: qrScan.name_format_valid !== false,\r\n  qr_name_matches_submitted: qrNameMatched,\r\n  qr_trailing_token_equivalent: qrTrailingTokenEquivalent,\r\n  cardholder_name: nameMatched,\r\n  qc_id_has_14_digits: idFormatMatched,\r\n  qc_id_format_3_3_8: idFormatMatched,\r\n  qc_id_matches_submitted: idMatched,\r\n  qc_id_found_lower_section: qrScan.qc_id_digits ? true : selectedOcrQcCandidate?.lowerSection || false,\r\n  birthdate_matches_profile: birthdateMatchesProfile,\r\n  gender_matches_profile: genderMatchesProfile,\r\n  qcid_source: selectedQcIdSource,\r\n};\r\n\r\nconst denialReasons = [...precheckErrors];\r\nconst warningMessages = [];\r\n\r\nif (qrStatusCode \u0026\u0026 (qrStatusCode \u003c 200 || qrStatusCode \u003e= 300)) {\r\n  denialReasons.push(\u0027QR scanner request failed with HTTP \u0027 + qrStatusCode + \u0027.\u0027);\r\n}\r\n\r\nif (ocrStatusCode \u0026\u0026 (ocrStatusCode \u003c 200 || ocrStatusCode \u003e= 300)) {\r\n  denialReasons.push(\u0027OCR provider request failed with HTTP \u0027 + ocrStatusCode + \u0027.\u0027);\r\n}\r\n\r\nif (asString(data.ocr_error_message)) {\r\n  denialReasons.push(\u0027OCR provider reported an error: \u0027 + asString(data.ocr_error_message));\r\n}\r\n\r\nif (!parsedText) {\r\n  denialReasons.push(\u0027OCR could not read any text from the uploaded ID. Please upload a clearer image or PDF.\u0027);\r\n}\r\n\r\nif (!titleMatched) {\r\n  denialReasons.push(\u0027The uploaded ID must show both \"Citizen Card\" and \"Kasama sa pag-unlad\".\u0027);\r\n}\r\n\r\nif (qrScan.payload_raw \u0026\u0026 qrScan.name_format_valid === false) {\r\n  denialReasons.push(\u0027QR name format is invalid. Use LAST, FIRST FULL_GIVEN FULL_OR_INITIAL_TRAILING (e.g., SOLITO, JEFLYN JOY MARAGGUN or SOLITO, JEFLYN JOY M.).\u0027);\r\n}\r\n\r\nif (normalizedExpectedName.length === 0) {\r\n  denialReasons.push(\u0027The submitted seeker name is missing, so name matching could not be completed.\u0027);\r\n} else if (!nameMatched) {\r\n  denialReasons.push(\u0027The name on the uploaded ID does not match the registered seeker name (\u0027 + seekerName + \u0027).\u0027);\r\n}\r\n\r\nif (expectedQcId.length === 0) {\r\n  denialReasons.push(\u0027The submitted QC ID number is missing, so ID matching could not be completed.\u0027);\r\n} else if (expectedQcId.length !== 14) {\r\n  denialReasons.push(\u0027The submitted QC ID must be 14 digits in 3-3-8 format (example: 078 512 57856458).\u0027);\r\n} else if (!idFormatMatched) {\r\n  denialReasons.push(\u0027The uploaded card does not show a 14-digit QC ID in the 3-3-8 format (example: 078 512 57856458).\u0027);\r\n} else if (!idMatched) {\r\n  denialReasons.push(\u0027The QC ID number on the uploaded card does not match the submitted QC ID (\u0027 + submittedQcIdRaw + \u0027).\u0027);\r\n}\r\n\r\nif (expectedBirthdate \u0026\u0026 extractedBirthdate \u0026\u0026 birthdateMatchesProfile === false) {\r\n  warningMessages.push(\u0027Birthdate from QR does not match the profile birthdate.\u0027);\r\n}\r\n\r\nif (expectedGender \u0026\u0026 extractedGender \u0026\u0026 genderMatchesProfile === false) {\r\n  warningMessages.push(\u0027Gender from QR does not match the profile gender.\u0027);\r\n}\r\n\r\nconst status = denialReasons.length === 0 ? \u0027verified\u0027 : \u0027rejected\u0027;\r\nconst warningSuffix = warningMessages.length \u003e 0 ? \u0027 Warning: \u0027 + warningMessages.join(\u0027 \u0027) : \u0027\u0027;\r\nconst reason =\r\n  denialReasons.length === 0\r\n    ? \u0027Verified: Citizen Card title, cardholder name, and 14-digit QC ID all matched\u0027 +\r\n      (selectedQcIdSource === \u0027qr_secure\u0027 ? \u0027 using the QR payload.\u0027 : \u0027 using OCR fallback.\u0027) +\r\n      warningSuffix\r\n    : denialReasons.join(\u0027 \u0027) + warningSuffix;\r\n\r\nconst warningPenalty = warningMessages.length * 0.03;\r\nconst confidence =\r\n  denialReasons.length === 0\r\n    ? Math.max(0.82, 0.98 - warningPenalty)\r\n    : Math.max(0.2, 0.92 - denialReasons.length * 0.18 - warningPenalty);\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      user_id: Number.isFinite(userId) \u0026\u0026 userId \u003e 0 ? userId : null,\r\n      callback_url: callbackUrl,\r\n      status,\r\n      reason,\r\n      confidence,\r\n      provider: \u0027ocr.space\u0027,\r\n      reference_id: asString(data.ocr_reference_id) || (ocrStatusCode ? String(ocrStatusCode) : null),\r\n      submitted_qc_id: submittedQcIdRaw || null,\r\n      extracted_qc_id: extractedQcId || null,\r\n      extracted_name: nameMatched ? (qrScan.full_name || seekerName) : null,\r\n      extracted_birthdate: extractedBirthdate,\r\n      extracted_gender: extractedGender,\r\n      birthdate_matches_profile: birthdateMatchesProfile,\r\n      gender_matches_profile: genderMatchesProfile,\r\n      warning_messages: warningMessages,\r\n      ocr_text: parsedText || null,\r\n      detected_qc_id_candidates: detectedQcIdCandidates,\r\n      ocr_qc_id_candidates: ocrQcIdCandidates.map((candidate) =\u003e candidate.raw),\r\n      qualification_checks: qualificationChecks,\r\n      selected_qc_id_line: selectedQcIdLine,\r\n      selected_qc_id_source: selectedQcIdSource,\r\n      qr_scan: qrScan,\r\n    },\r\n  },\r\n];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1980,
+                                       320
+                                   ],
+                      "id":  "node-evaluate-verification",
+                      "name":  "Evaluate ID Verification"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "={{$json.callback_url}}",
+                                         "sendHeaders":  true,
+                                         "specifyHeaders":  "keypair",
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "Content-Type",
+                                                                                         "value":  "application/json"
+                                                                                     },
+                                                                                     {
+                                                                                         "name":  "X-CityJobLink-Webhook-Secret",
+                                                                                         "value":  "={{$env.N8N_SEEKER_ID_VERIFICATION_CALLBACK_SECRET || \"\"}}"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "contentType":  "json",
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ ({ user_id: $json.user_id, status: $json.status, reason: $json.reason, confidence: $json.confidence, provider: $json.provider, reference_id: $json.reference_id, extracted_qc_id: $json.extracted_qc_id, extracted_name: $json.extracted_name, extracted_birthdate: $json.extracted_birthdate, extracted_gender: $json.extracted_gender, birthdate_matches_profile: $json.birthdate_matches_profile, gender_matches_profile: $json.gender_matches_profile, ocr_text: $json.ocr_text }) }}",
+                                         "options":  {
+                                                         "response":  {
+                                                                          "response":  {
+                                                                                           "responseFormat":  "json",
+                                                                                           "fullResponse":  true,
+                                                                                           "neverError":  true
+                                                                                       }
+                                                                      }
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  3,
+                      "position":  [
+                                       2220,
+                                       320
+                                   ],
+                      "id":  "node-callback-laravel",
+                      "name":  "Callback Laravel",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const response = $input.first()?.json ?? {};\r\nconst statusCode = Number(response.statusCode ?? response.status ?? 0);\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      callback_status_code: Number.isFinite(statusCode) ? statusCode : 0,\r\n      callback_response_body: response.body ?? null,\r\n      callback_response_headers: response.headers ?? null,\r\n    },\r\n  },\r\n];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2460,
+                                       320
+                                   ],
+                      "id":  "node-parse-callback",
+                      "name":  "Parse Callback Response"
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "combine",
+                                         "combineBy":  "combineByPosition",
+                                         "options":  {
+                                                         "includeUnpaired":  true
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.merge",
+                      "typeVersion":  3,
+                      "position":  [
+                                       2700,
+                                       320
+                                   ],
+                      "id":  "node-merge-verification-callback",
+                      "name":  "Merge Verification + Callback"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const item = $input.first()?.json || {};\r\nconst checks = item.qualification_checks || {};\r\nconst qrScan = item.qr_scan || {};\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      _debug_extraction_report: {\r\n        user_id: item.user_id,\r\n        status: item.status,\r\n        confidence_score: item.confidence,\r\n        submitted_qc_id: item.submitted_qc_id || \u0027(not provided)\u0027,\r\n        qualification_rules: {\r\n          required_title: \u0027Citizen Card + Kasama sa pag-unlad\u0027,\r\n          required_name_match: true,\r\n          required_qc_id_format: \u002714 digits in 3-3-8 format\u0027,\r\n          preferred_qcid_source: \u0027QR payload FULLNAME|QCID|BIRTHDATE|GENDER\u0027,\r\n        },\r\n        qualification_checks: {\r\n          citizen_card_title: checks.citizen_card_title || false,\r\n          qr_payload_decoded: checks.qr_payload_decoded || false,\r\n          qr_name_matches_submitted: checks.qr_name_matches_submitted || false,\r\n          cardholder_name: checks.cardholder_name || false,\r\n          qc_id_has_14_digits: checks.qc_id_has_14_digits || false,\r\n          qc_id_format_3_3_8: checks.qc_id_format_3_3_8 || false,\r\n          qc_id_matches_submitted: checks.qc_id_matches_submitted || false,\r\n          qc_id_found_lower_section: checks.qc_id_found_lower_section || false,\r\n          qcid_source: checks.qcid_source || \u0027(none)\u0027,\r\n        },\r\n        qr_scan: {\r\n          provider: qrScan.provider || \u0027(not attempted)\u0027,\r\n          payload_raw: qrScan.payload_raw || \u0027(not found)\u0027,\r\n          full_name: qrScan.full_name || \u0027(not decoded)\u0027,\r\n          qc_id_raw: qrScan.qc_id_raw || \u0027(not decoded)\u0027,\r\n          qc_id_digits: qrScan.qc_id_digits || \u0027(not decoded)\u0027,\r\n          birthdate: qrScan.birthdate || \u0027(not decoded)\u0027,\r\n          gender: qrScan.gender || \u0027(not decoded)\u0027,\r\n          error: qrScan.error || null,\r\n        },\r\n        extracted_fields: {\r\n          selected_qc_id: item.extracted_qc_id || \u0027(not extracted)\u0027,\r\n          selected_qc_id_source: item.selected_qc_id_source || \u0027(none)\u0027,\r\n          qc_id_candidates: item.detected_qc_id_candidates || [],\r\n          ocr_qc_id_candidates: item.ocr_qc_id_candidates || [],\r\n          qc_id_source_line: item.selected_qc_id_line || \u0027(line not identified)\u0027,\r\n          matched_name: item.extracted_name || \u0027(not matched)\u0027,\r\n          ocr_text_preview: item.ocr_text ? item.ocr_text.substring(0, 300) + (item.ocr_text.length \u003e 300 ? \u0027...\u0027 : \u0027\u0027) : \u0027(no text)\u0027,\r\n          ocr_text_full: item.ocr_text || \u0027(empty)\u0027,\r\n        },\r\n        verification_details: {\r\n          reason: item.reason,\r\n          provider: item.provider || \u0027ocr.space\u0027,\r\n          reference_id: item.reference_id,\r\n        },\r\n        callback_sent: {\r\n          status_code: item.callback_status_code || 0,\r\n          response: item.callback_response_body || \u0027(not sent)\u0027,\r\n        },\r\n      },\r\n      _message: \u0027QR payload is preferred. If qr_scan.qc_id_digits is empty, the workflow fell back to OCR for QC ID detection.\u0027,\r\n    },\r\n  },\r\n];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       2940,
+                                       320
+                                   ],
+                      "id":  "node-debug-report",
                       "name":  "Debug: Show OCR Extraction"
                   }
               ],
@@ -53,23 +323,159 @@
                                                                  "main":  [
                                                                               [
                                                                                   {
-                                                                                      "node":  "OCR + Evaluate + Callback",
+                                                                                      "node":  "Prepare Payload",
                                                                                       "type":  "main",
                                                                                       "index":  0
                                                                                   }
                                                                               ]
                                                                           ]
                                                              },
-                        "OCR + Evaluate + Callback":  {
-                                                          "main":  [
-                                                                       [
-                                                                           {
-                                                                               "node":  "Debug: Show OCR Extraction",
-                                                                               "type":  "main",
-                                                                               "index":  0
-                                                                           }
-                                                                       ]
+                        "Prepare Payload":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Download ID Document",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 },
+                                                                 {
+                                                                     "node":  "Merge Payload + Scan Results",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Download ID Document":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "QR API - Read Binary",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      },
+                                                                      {
+                                                                          "node":  "OCR API - Read Binary",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "QR API - Read Binary":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "node":  "Parse QR Response",
+                                                                          "type":  "main",
+                                                                          "index":  0
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "OCR API - Read Binary":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "node":  "Parse OCR Response",
+                                                                           "type":  "main",
+                                                                           "index":  0
+                                                                       }
                                                                    ]
-                                                      }
+                                                               ]
+                                                  },
+                        "Parse QR Response":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "node":  "Merge QR + OCR",
+                                                                       "type":  "main",
+                                                                       "index":  0
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Parse OCR Response":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Merge QR + OCR",
+                                                                        "type":  "main",
+                                                                        "index":  1
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Merge QR + OCR":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Merge Payload + Scan Results",
+                                                                    "type":  "main",
+                                                                    "index":  1
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Merge Payload + Scan Results":  {
+                                                             "main":  [
+                                                                          [
+                                                                              {
+                                                                                  "node":  "Evaluate ID Verification",
+                                                                                  "type":  "main",
+                                                                                  "index":  0
+                                                                              }
+                                                                          ]
+                                                                      ]
+                                                         },
+                        "Evaluate ID Verification":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "node":  "Callback Laravel",
+                                                                              "type":  "main",
+                                                                              "index":  0
+                                                                          },
+                                                                          {
+                                                                              "node":  "Merge Verification + Callback",
+                                                                              "type":  "main",
+                                                                              "index":  0
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                        "Callback Laravel":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Parse Callback Response",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Parse Callback Response":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "node":  "Merge Verification + Callback",
+                                                                             "type":  "main",
+                                                                             "index":  1
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Merge Verification + Callback":  {
+                                                              "main":  [
+                                                                           [
+                                                                               {
+                                                                                   "node":  "Debug: Show OCR Extraction",
+                                                                                   "type":  "main",
+                                                                                   "index":  0
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                          }
                     }
 }

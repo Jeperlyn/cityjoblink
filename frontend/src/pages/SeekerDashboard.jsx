@@ -9,6 +9,7 @@ import {
 import Swal from 'sweetalert2';
 import 'sweetalert2/dist/sweetalert2.min.css';
 import { API_BASE } from '../lib/apiBase';
+import { formatQcId338, parseQcQrPayload } from '../lib/qcQrParser';
 
 // =====================================================
 // 1. COMPONENT: APPLICATION PROGRESS STEPPER
@@ -766,6 +767,8 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
   });
   const [isSavingBackgroundLinks, setIsSavingBackgroundLinks] = useState(false);
   const [isIdUploading, setIsIdUploading] = useState(false);
+  const [idQrFeedback, setIdQrFeedback] = useState({ type: '', message: '' });
+  const [idQrPreview, setIdQrPreview] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [withdrawModal, setWithdrawModal] = useState({ isOpen: false, type: null, id: null, title: '' });
   const fileInputRef = useRef(null);
@@ -834,6 +837,8 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
 
   useEffect(() => {
     setIdNumberInput(profile?.qc_id || '');
+    setIdQrFeedback({ type: '', message: '' });
+    setIdQrPreview(null);
   }, [profile?.qc_id]);
 
   useEffect(() => {
@@ -980,6 +985,45 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
       return;
     }
     setIdDocumentFile(file);
+  };
+
+  const handleIdNumberInputChange = (e) => {
+    const value = e.target.value;
+    const parsedQr = parseQcQrPayload(value);
+
+    if (!parsedQr.isQrPayload) {
+      setIdQrFeedback({ type: '', message: '' });
+      setIdQrPreview(null);
+      setIdNumberInput(value);
+      return;
+    }
+
+    const fields = parsedQr.fields || {};
+    const normalizedQcId = fields.qcIdDigits?.length === 14
+      ? formatQcId338(fields.qcIdDigits)
+      : value;
+
+    setIdNumberInput(normalizedQcId);
+
+    if (!parsedQr.isValid) {
+      setIdQrFeedback({
+        type: 'error',
+        message: parsedQr.errors.join(' '),
+      });
+      setIdQrPreview(null);
+      return;
+    }
+
+    setIdQrFeedback({
+      type: 'success',
+      message: 'QR payload parsed. QC ID was filled automatically.',
+    });
+
+    setIdQrPreview({
+      name: fields.name?.fullName || null,
+      birthdateYYMMDD: fields.birthdateYYMMDD || null,
+      gender: fields.gender || null,
+    });
   };
 
   const handleSaveBackgroundLinks = async () => {
@@ -1336,10 +1380,15 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                       <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">QC ID Number</label>
                       <input
                         value={idNumberInput}
-                        onChange={(e) => setIdNumberInput(e.target.value)}
+                        onChange={handleIdNumberInputChange}
                         className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Enter your QC ID number"
+                        placeholder="Enter your QC ID number or QR payload"
                       />
+                      {idQrFeedback.message && (
+                        <p className={`mt-2 text-xs font-semibold ${idQrFeedback.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
+                          {idQrFeedback.message}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -1362,6 +1411,14 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                       />
                     </div>
                   </div>
+
+                  {idQrPreview && (
+                    <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700 space-y-1">
+                      <p><span className="font-bold">Parsed Name:</span> {idQrPreview.name || 'N/A'}</p>
+                      <p><span className="font-bold">Parsed Birthdate (YYMMDD):</span> {idQrPreview.birthdateYYMMDD || 'N/A'}</p>
+                      <p><span className="font-bold">Parsed Gender:</span> {idQrPreview.gender || 'N/A'}</p>
+                    </div>
+                  )}
 
                   <div className="mt-4 flex flex-col sm:flex-row gap-3">
                     <button

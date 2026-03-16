@@ -16,7 +16,6 @@ Route::post('/upload/resume', [AuthController::class, 'uploadResume']);
 Route::delete('/upload/resume', [AuthController::class, 'deleteResume']);
 Route::post('/upload/employer-documents', [AuthController::class, 'uploadEmployerDocuments']);
 Route::post('/upload/seeker-id-document', [AuthController::class, 'uploadSeekerIdDocument']);
-Route::post('/webhooks/seeker-id-verification-result', [AuthController::class, 'handleSeekerIdVerificationWebhook']);
 
 // --- Job Routes ---
 Route::get('/jobs', [FeatureController::class, 'jobs']);

@@ -44,6 +44,10 @@ class User extends Authenticatable
         'id_verification_checked_at',
         'id_extracted_qc_id',
         'id_extracted_name',
+        'id_extracted_birthdate',
+        'id_extracted_gender',
+        'id_birthdate_matches_profile',
+        'id_gender_matches_profile',
         'id_ocr_text',
         'is_priority_verified',
         'resume_path',
@@ -89,6 +93,8 @@ class User extends Authenticatable
             'is_priority_verified' => 'boolean',
             'id_verification_confidence' => 'float',
             'id_verification_checked_at' => 'datetime',
+            'id_birthdate_matches_profile' => 'boolean',
+            'id_gender_matches_profile' => 'boolean',
             'parsed_skill' => 'array',
         ];
     }
