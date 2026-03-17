@@ -70,6 +70,87 @@ class FeatureController extends Controller
         ]);
     }
 
+    // ✅ NEW FEATURE: Get Saved Jobs
+    public function getSavedJobs(Request $request)
+    {
+        $request->validate(['email' => ['required', 'email']]);
+        
+        $seeker = User::where('email', $request->email)->first();
+        if (!$seeker) {
+            return response()->json(['status' => 'error', 'message' => 'User not found.'], 404);
+        }
+
+        try {
+            $savedJobs = DB::table('saved_jobs')
+                ->where('seeker_id', $seeker->id)
+                ->pluck('job_id')
+                ->toArray();
+
+            return response()->json([
+                'status' => 'success',
+                'saved_jobs' => $savedJobs,
+            ]);
+        } catch (\Exception $e) {
+            // Graceful fallback if the 'saved_jobs' table hasn't been created yet
+            return response()->json([
+                'status' => 'success',
+                'saved_jobs' => [],
+            ]);
+        }
+    }
+
+    // ✅ NEW FEATURE: Toggle Saved Job (Add/Remove)
+    public function toggleSaveJob(Request $request)
+    {
+        $request->validate([
+            'email' => ['required', 'email'],
+            'job_id' => ['required', 'integer', 'exists:jobs_catalog,id'],
+        ]);
+
+        $seeker = User::where('email', $request->email)->first();
+        if (!$seeker) {
+            return response()->json(['status' => 'error', 'message' => 'User not found.'], 404);
+        }
+
+        try {
+            $existing = DB::table('saved_jobs')
+                ->where('seeker_id', $seeker->id)
+                ->where('job_id', $request->job_id)
+                ->first();
+
+            if ($existing) {
+                DB::table('saved_jobs')
+                    ->where('seeker_id', $seeker->id)
+                    ->where('job_id', $request->job_id)
+                    ->delete();
+
+                return response()->json([
+                    'status' => 'success', 
+                    'message' => 'Job removed from saved list.', 
+                    'is_saved' => false
+                ]);
+            } else {
+                DB::table('saved_jobs')->insert([
+                    'seeker_id' => $seeker->id,
+                    'job_id' => $request->job_id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                return response()->json([
+                    'status' => 'success', 
+                    'message' => 'Job saved successfully.', 
+                    'is_saved' => true
+                ]);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Database table not found. Admin needs to migrate saved_jobs table.',
+            ], 500);
+        }
+    }
+
     public function applyJob(Request $request)
     {
         $request->validate([
@@ -82,7 +163,6 @@ class FeatureController extends Controller
             return response()->json(['status' => 'error', 'message' => 'User not found.'], 404);
         }
 
-        // ✅ FEATURE: Prevent unverified seekers from applying
         if ($seeker->id_verification_status !== 'verified') {
             $statusMessage = match ($seeker->id_verification_status) {
                 'manual_review' => 'Your account is currently under review by an Admin. You cannot apply for jobs until your ID is verified.',
@@ -96,7 +176,6 @@ class FeatureController extends Controller
             ], 403);
         }
 
-        // ✅ NEW FEATURE: Prevent application if resume/education is missing
         if (empty($seeker->resume_path) || empty($seeker->educational_attainment) || $seeker->educational_attainment === 'Not Specified') {
             return response()->json([
                 'status' => 'error',
@@ -452,6 +531,7 @@ class FeatureController extends Controller
         }
     }
 
+    // ✅ FEATURE: Updated to accept and save 'status'
     public function updateJob(Request $request, $id)
     {
         $request->validate([
@@ -466,6 +546,7 @@ class FeatureController extends Controller
             'salary_max' => ['nullable', 'integer', 'min:0'],
             'educational_attainment_required' => ['nullable', 'string', 'max:255'],
             'industry' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'in:Open,Closed,Paused'], 
         ]);
 
         $employer = User::where('email', $request->email)->first();
@@ -492,6 +573,7 @@ class FeatureController extends Controller
             'required_skills' => json_encode($request->required_skills ?? []),
             'educational_attainment_required' => $request->educational_attainment_required,
             'description' => $request->description,
+            'status' => $request->input('status', $job->status), // Safely defaults to existing if null
             'updated_at' => now(),
         ]);
 
@@ -1623,7 +1705,6 @@ class FeatureController extends Controller
         $map = [
             'doctorate' => ['doctorate', 'doctoral', 'phd', 'doctor of philosophy'],
             'masters' => ['master', 'masters', "master's", 'm.s', 'ms', 'm.a', 'ma', 'mba'],
-            // Removed 'degree' because 'associate degree' contains 'degree' and was getting ranked as a Bachelor's
             'bachelors' => ['bachelor', 'bachelors', "bachelor's", 'b.s', 'bs', 'b.a', 'ba', 'college graduate', 'college grad'],
             'associate' => ['associate degree', 'associate'],
             'vocational' => ['vocational', 'tesda', 'certificate', 'technical-vocational', 'nc ii', 'nc iii'],
@@ -1632,8 +1713,6 @@ class FeatureController extends Controller
 
         foreach ($map as $level => $keywords) {
             foreach ($keywords as $keyword) {
-                // Using regex with word boundaries (\b) prevents substrings from triggering false matches
-                // e.g., "ma" inside "diploma" will no longer falsely match "Master's"
                 if (preg_match('/\b' . preg_quote($keyword, '/') . '\b/u', $normalized)) {
                     return $level;
                 }

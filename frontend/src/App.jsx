@@ -134,6 +134,7 @@ const mapBackendJob = (job) => {
         salary,
         salaryMin: min,
         salaryMax: max,
+        status: job.status,
         requiredSkills: parseJsonArray(job.required_skills),
         educationalAttainmentRequired: job.educational_attainment_required || '',
     };
@@ -287,6 +288,10 @@ const App = () => {
     const [jobFairs, setJobFairs] = useState(() => JSON.parse(localStorage.getItem('cjl_jobfairs')) || INITIAL_JOB_FAIRS); 
     const [notifications, setNotifications] = useState(() => JSON.parse(localStorage.getItem('cjl_notifications')) || INITIAL_NOTIFICATIONS);
     const [seekerRecommendations, setSeekerRecommendations] = useState([]);
+    
+    // Saved Jobs State
+    const [savedJobs, setSavedJobs] = useState(() => JSON.parse(localStorage.getItem('cjl_saved_jobs')) || []);
+    
     const [selectedJob, setSelectedJob] = useState(null);
     const [selectedJobMatchData, setSelectedJobMatchData] = useState(null);
     const [targetChatId, setTargetChatId] = useState(null);
@@ -301,7 +306,6 @@ const App = () => {
     });
     const [employerSeekers, setEmployerSeekers] = useState([]);
 
-    // helper used by seeker dashboard to view job metrics/details
     const handleViewJobDetails = (job, fromView = '') => {
         if (!job) return;
         setSelectedJob(job);
@@ -310,13 +314,12 @@ const App = () => {
         setCurrentView('job-details');
     };
 
-    // Toast notification helper
     const showToast = (text, type = 'success') => {
         const id = Date.now();
         setToastMessages(prev => [...prev, { id, text, type }]);
         setTimeout(() => {
             setToastMessages(prev => prev.filter(msg => msg.id !== id));
-        }, 3000); // Auto-remove after 3 seconds
+        }, 3000); 
     };
 
     useEffect(() => { localStorage.setItem('cjl_users', JSON.stringify(users)); }, [users]);
@@ -325,6 +328,7 @@ const App = () => {
     useEffect(() => { localStorage.setItem('cjl_notifications', JSON.stringify(notifications)); }, [notifications]);
     useEffect(() => { localStorage.setItem('cjl_messages', JSON.stringify(messages)); }, [messages]);
     useEffect(() => { localStorage.setItem('cjl_jobfairs', JSON.stringify(jobFairs)); }, [jobFairs]);
+    useEffect(() => { localStorage.setItem('cjl_saved_jobs', JSON.stringify(savedJobs)); }, [savedJobs]);
 
     const fetchSeekerProfile = async (email) => {
         const response = await fetch(`${API_BASE}/seeker/profile?email=${encodeURIComponent(email)}`, {
@@ -339,8 +343,27 @@ const App = () => {
         });
     };
 
-    const fetchJobs = async () => {
-        const response = await fetch(`${API_BASE}/jobs`, { headers: { Accept: 'application/json' } });
+    // Fetch Saved Jobs API Call
+    const fetchSavedJobs = async (email) => {
+        try {
+            const response = await fetch(`${API_BASE}/seeker/saved-jobs?email=${encodeURIComponent(email)}`, {
+                headers: { Accept: 'application/json' },
+            });
+            const data = await response.json();
+            if (data.status === 'success') {
+                return data.saved_jobs || [];
+            }
+            return [];
+        } catch (error) {
+            // Fails silently and relies on localStorage fallback
+            return JSON.parse(localStorage.getItem('cjl_saved_jobs')) || [];
+        }
+    };
+
+    // ✅ FEATURE FIX: Added includeClosed parameter so employers can see closed jobs after updating them
+    const fetchJobs = async (includeClosed = false) => {
+        const url = includeClosed ? `${API_BASE}/jobs?include_closed=1` : `${API_BASE}/jobs`;
+        const response = await fetch(url, { headers: { Accept: 'application/json' } });
         const data = await response.json();
         if (!response.ok || data.status !== 'success') throw new Error(data?.message || 'Failed loading jobs');
         return (data.jobs || []).map(mapBackendJob);
@@ -611,7 +634,7 @@ const App = () => {
 
         const bootstrap = async () => {
             try {
-                const [profileData, jobsData, trainingsData, applicationsData, notificationsData, recommendationsData, messagesData] = await Promise.all([
+                const [profileData, jobsData, trainingsData, applicationsData, notificationsData, recommendationsData, messagesData, savedJobsData] = await Promise.all([
                     fetchSeekerProfile(user.email),
                     fetchJobs(),
                     fetchTrainings(),
@@ -619,6 +642,7 @@ const App = () => {
                     fetchNotifications(user.email),
                     fetchSeekerRecommendations(user.email, 50),
                     fetchMessages(user.email),
+                    fetchSavedJobs(user.email),
                 ]);
 
                 setUser(profileData);
@@ -629,6 +653,7 @@ const App = () => {
                 setNotifications(notificationsData);
                 setSeekerRecommendations(recommendationsData);
                 setMessages(messagesData);
+                setSavedJobs(savedJobsData);
             } catch (error) {
                 console.error('Seeker bootstrap failed:', error);
             }
@@ -753,6 +778,40 @@ const App = () => {
     };
 
     const handleLogout = () => { setUser(null); localStorage.removeItem('user'); setCurrentView('home'); };
+
+    const handleToggleSaveJob = async (jobId) => {
+        if (!user?.email) return showToast('Please log in to save jobs.', 'error');
+
+        const isSaved = savedJobs.includes(jobId);
+        setSavedJobs(prev => isSaved ? prev.filter(id => id !== jobId) : [...prev, jobId]);
+
+        try {
+            const response = await fetch(`${API_BASE}/seeker/saved-jobs/toggle`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                    email: user.email,
+                    job_id: jobId,
+                }),
+            });
+            const data = await response.json();
+            
+            if (!response.ok || data.status !== 'success') {
+                throw new Error('Failed to sync with server.');
+            }
+            
+            if (data.is_saved !== undefined) {
+                 setSavedJobs(prev => data.is_saved ? [...new Set([...prev, jobId])] : prev.filter(id => id !== jobId));
+            }
+            showToast(data.message || (data.is_saved ? 'Job saved!' : 'Job removed from saved list.'), 'success');
+        } catch (error) {
+            console.warn('Backend sync failed, falling back to local storage for saved jobs.');
+            showToast(isSaved ? 'Job removed locally.' : 'Job saved locally.', 'success');
+        }
+    };
 
     const handleApply = async (jobId) => {
         if (!user) return setCurrentView('login');
@@ -1163,7 +1222,7 @@ const App = () => {
                 throw new Error(data?.message || 'Failed to post job.');
             }
 
-            const refreshedJobs = await fetchJobs();
+            const refreshedJobs = await fetchJobs(true); // Ensure employer gets refreshed closed jobs too
             setJobs(refreshedJobs);
             showToast('Job posted successfully.', 'success');
             return true;
@@ -1173,7 +1232,6 @@ const App = () => {
         }
     };
 
-    // ✅ ADDED: Function to handle updating an existing job
     const handleUpdateJob = async (updatedJobPayload) => {
         if (!user?.email) {
             showToast('Missing account email.', 'error');
@@ -1198,6 +1256,7 @@ const App = () => {
                     salary_max: updatedJobPayload.salaryMax ?? null,
                     educational_attainment_required: updatedJobPayload.educationalAttainmentRequired || null,
                     industry: user.industry || null,
+                    status: updatedJobPayload.status, // THIS IS THE LINE THAT FIXES THE TOGGLE
                 }),
             });
 
@@ -1206,7 +1265,8 @@ const App = () => {
                 throw new Error(data?.message || 'Failed to update job.');
             }
 
-            const refreshedJobs = await fetchJobs();
+            // ✅ Passed 'true' here to ensure the closed job stays in the list!
+            const refreshedJobs = await fetchJobs(user?.role === 'Employer');
             setJobs(refreshedJobs);
             showToast('Job updated successfully.', 'success');
             return true;
@@ -1217,7 +1277,7 @@ const App = () => {
     };
 
     const renderContent = () => {
-        // 1. PUBLIC VIEWS (Routing Fix: Included explicit checks)
+        // 1. PUBLIC VIEWS
         if (currentView === 'home') return <LandingPage onNavigate={handleNavigate} />;
         if (currentView === 'trainings' || currentView === 'public-trainings') {
             return <PublicListings type="trainings" data={trainings} user={user} onRegister={handleRegisterTraining} />;
@@ -1230,7 +1290,6 @@ const App = () => {
         if (!user || currentView === 'login') return <LoginScreen onLogin={handleLogin} loginError={loginError} setLoginError={setLoginError} />;
 
         // 3. PROTECTED VIEWS
-        // ✅ NEW: Added initialTab prop so it opens the right section when redirected
         if (currentView === 'seeker-dash') return (
             <SeekerDashboard 
                 profile={user} 
@@ -1238,9 +1297,12 @@ const App = () => {
                 jobs={jobs || []} 
                 trainings={trainings || []}
                 jobFairs={jobFairs || []}
+                savedJobs={savedJobs || []}
                 initialTab={seekerActiveTab} 
                 onNavigate={setCurrentView}
                 onViewJob={(j) => handleViewJobDetails(j, 'seeker-dash')}
+                onApply={handleApply}
+                onToggleSaveJob={handleToggleSaveJob}
                 onCancelApplication={handleCancelApplication}
                 onWithdrawTraining={handleWithdrawTraining}
                 onSubmitEmployerFeedback={handleSubmitEmployerFeedback}
@@ -1256,8 +1318,7 @@ const App = () => {
         
         if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} seekers={adminSeekers} analytics={adminAnalytics} onVerifyEmployer={handleVerifyEmployer} onReviewSeeker={handleReviewSeekerId} jobFairs={jobFairs} onAddJobFair={()=>{}} />;
         
-        // ✅ NEW: Passed profile and onGoToProfile to FindJobs so it can trigger the redirect
-        if (currentView === 'matchmaker') return <FindJobs jobs={jobs} recommendations={seekerRecommendations || []} onApply={handleApply} applications={applications} userId={user.id} profile={user} onGoToProfile={() => { setSeekerActiveTab('profile'); setCurrentView('seeker-dash'); setTimeout(() => { document.getElementById('resume-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} />;
+        if (currentView === 'matchmaker') return <FindJobs jobs={jobs} recommendations={seekerRecommendations || []} onApply={handleApply} applications={applications} userId={user.id} profile={user} savedJobs={savedJobs || []} onToggleSaveJob={handleToggleSaveJob} onGoToProfile={() => { setSeekerActiveTab('profile'); setCurrentView('seeker-dash'); setTimeout(() => { document.getElementById('resume-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} />;
         
         if (currentView === 'job-details') {
             const matchInfo = selectedJobMatchData || calculateMatchScore(selectedJob?.requiredSkills || [], user?.skills || []);

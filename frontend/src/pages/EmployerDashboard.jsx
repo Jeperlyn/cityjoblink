@@ -5,7 +5,7 @@ import {
     Edit3, User, X, FileText, ChevronUp, ChevronDown, AlertCircle,
     CheckCircle, UploadCloud, Clock, MapPin, Globe, Phone, Eye, ExternalLink,
     CreditCard, Calendar, Smile, Mail, BookOpen, Star, Filter, TrendingUp,
-    Target, ArrowRight
+    Target, ArrowRight, LayoutGrid, List, XCircle, Info
 } from 'lucide-react';
 import { API_BASE, buildBackendUrl } from '../lib/apiBase';
 
@@ -89,6 +89,13 @@ const buildApplicantBackgroundLinks = (applicant) => {
     return links;
 };
 
+// Helper for Color Coding
+const getMatchTextColorClass = (score) => {
+    if (score >= 80) return 'text-emerald-600';
+    if (score >= 50) return 'text-amber-500';
+    return 'text-red-500';
+};
+
 const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, onUpdateJob, onUpdateProfile, onUploadDocs, onOpenChat, onUpdateStatus }) => {
     const [activeTab, setActiveTab] = useState('overview');
 
@@ -116,6 +123,12 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
     const [editingJob, setEditingJob] = useState(null);
     const [applicantStatusFilter, setApplicantStatusFilter] = useState('All');
     const [minFitScoreFilter, setMinFitScoreFilter] = useState('');
+
+    // State for Kanban vs List View toggles per job
+    const [viewModes, setViewModes] = useState({});
+    
+    // State for Match Insights Modal
+    const [insightData, setInsightData] = useState(null);
 
     useEffect(() => {
         if (profile) {
@@ -184,7 +197,6 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
         setActiveTab('jobs');
     };
 
-    // --- UPDATED SAVE LOGIC ---
     const handleSaveProfile = async () => {
         if (!editProfileData.industry || !editProfileData.companyAddress) {
             alert("Address and Industry are required to complete your profile.");
@@ -213,26 +225,22 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
             const data = await response.json();
 
             if (data.status === 'success') {
-                // Ensure the previous properties from `profile` (e.g., name, role, email) remain.
-                // Reconstruct with standardized property names to fix empty rendering issue.
                 const updatedUser = {
-                    ...profile,          // Keep old fields (id, name, role)
-                    ...data.user,         // Apply backend updates
+                    ...profile,          
+                    ...data.user,         
                     companyName: editProfileData.companyName,
                     companyAddress: editProfileData.companyAddress,
-                    address: editProfileData.companyAddress,      // Fallback
-                    company_address: editProfileData.companyAddress, // Fallback
+                    address: editProfileData.companyAddress,      
+                    company_address: editProfileData.companyAddress, 
                     industry: editProfileData.industry,
                     contactNumber: editProfileData.contactNumber,
-                    contact_number: editProfileData.contactNumber, // Fallback
+                    contact_number: editProfileData.contactNumber, 
                     companyWebsite: editProfileData.companyWebsite,
-                    company_website: editProfileData.companyWebsite // Fallback
+                    company_website: editProfileData.companyWebsite 
                 };
 
-                // 1. Update LocalStorage immediately
                 localStorage.setItem('user', JSON.stringify(updatedUser));
 
-                // 2. Update React State via the passed prop
                 if (typeof onUpdateProfile === 'function') {
                     onUpdateProfile(updatedUser);
                 }
@@ -346,6 +354,13 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
         if (ok) setShowSuccessModal(true);
     };
 
+    const toggleJobStatus = (job) => {
+        const newStatus = job.status === 'Open' ? 'Closed' : 'Open';
+        if(typeof onUpdateJob === 'function') {
+            onUpdateJob({ ...job, status: newStatus }); 
+        }
+    };
+
     const salaryOptions = Array.from({ length: 99 }, (_, index) => (index + 2) * 5000);
     const statusFilterOptions = ['All', 'Pending', 'Viewing', 'Interview', 'Hired', 'Rejected', 'Withdrawn'];
     const jobLocationOptions = useMemo(() => {
@@ -422,7 +437,6 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                             </div>
                         </div>
 
-                        {/* ✅ INTEGRATED: VERIFICATION REQUIRED BOX */}
                         {!profile?.isVerified && (
                             <div className="bg-orange-50 border-orange-200 border p-6 rounded-2xl mb-6 shadow-sm mt-6">
                                 <h3 className="font-bold text-orange-800 flex items-center gap-2 text-lg">
@@ -466,7 +480,6 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                             </div>
                         )}
 
-                        {/* ✅ RECENT ACTIVITY SECTION WITH TARGET ICON */}
                         <div className="bg-white rounded-xl border shadow-sm overflow-hidden mt-8">
                             <div className="p-4 border-b bg-gray-50/50 flex justify-between items-center">
                                 <h3 className="font-bold text-gray-700 flex items-center gap-2">
@@ -535,7 +548,6 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                         <div className="flex flex-wrap justify-between items-center gap-4">
                             <h2 className="text-2xl font-bold text-gray-900">Manage Job Postings</h2>
 
-                            {/* ✅ FEATURE 3: NEW GLOBAL FILTER UI Integration */}
                             <div className="flex flex-wrap gap-3 bg-white p-3 rounded-xl border shadow-sm">
                                 <div className="flex items-center gap-2 border-r pr-3">
                                     <Filter size={16} className="text-gray-400" />
@@ -575,13 +587,24 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                         : "No job posts yet. Start by creating one!"}
                                 </div>
                             ) : (
-                                jobsToDisplay.map(j => (
-                                    <div key={j.id} className="bg-white p-6 rounded-xl border shadow-sm">
+                                jobsToDisplay.map(j => {
+                                    const isKanban = viewModes[j.id] === 'kanban';
+
+                                    return (
+                                    <div key={j.id} className="bg-white p-6 rounded-xl border shadow-sm transition-all duration-300 w-full overflow-hidden">
                                         <div className="flex justify-between items-start">
                                             <div>
                                                 <h3 className="font-bold text-xl">{j.title}</h3>
-                                                <div className="flex gap-2 mt-2">
-                                                    <span className={`text-xs px-2 py-1 rounded font-bold ${j.status === 'Open' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>{j.status}</span>
+                                                <div className="flex gap-2 mt-2 items-center">
+                                                    
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); toggleJobStatus(j); }} 
+                                                        className={`text-xs px-2 py-1 rounded font-bold cursor-pointer hover:opacity-80 transition-opacity ${j.status === 'Open' ? 'bg-green-50 text-green-600 border border-green-200' : 'bg-gray-100 text-gray-600 border border-gray-200'}`} 
+                                                        title="Click to toggle Open/Closed"
+                                                    >
+                                                        {j.status === 'Open' ? '🟢 Open' : '⚫ Closed'}
+                                                    </button>
+
                                                     <span className="text-xs bg-gray-100 px-2 py-1 rounded font-bold">
                                                         {j.salaryMin && j.salaryMax ? `₱${j.salaryMin.toLocaleString()} - ₱${j.salaryMax.toLocaleString()}` : (j.salary || "Negotiable")}
                                                     </span>
@@ -601,7 +624,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                         </div>
 
                                         {expandedJob === j.id && (
-                                            <div className="mt-4 p-5 bg-gray-50 rounded-xl text-sm border space-y-4">
+                                            <div className="mt-4 p-5 bg-gray-50 rounded-xl text-sm border space-y-4 animate-in slide-in-from-top-2 duration-300">
                                                 <div>
                                                     <h4 className="text-xs font-black text-gray-400 uppercase mb-1">Job Description</h4>
                                                     <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{j.description}</p>
@@ -632,85 +655,187 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                             </div>
                                         )}
 
-                                        <div className="mt-6 pt-6 border-t">
-                                            <h4 className="text-xs font-black text-gray-400 uppercase mb-4 flex items-center gap-2">
-                                                <User size={14} /> Applicants ({getSortedApplicants(j.id).length})
-                                                {(applicantStatusFilter !== 'All' || minFitScoreFilter !== '') && <span className="text-[10px] text-orange-600 lowercase font-medium ml-2">(Filtered)</span>}
-                                            </h4>
-
-                                            <div className="space-y-3">
-                                                {/* ✅ USING THE SORTED LIST HERE (Desc by Fit Score) */}
-                                                {getSortedApplicants(j.id).map(app => {
-                                                    const s = seekers.find(u => String(u.id) === String(app.seekerId));
-                                                    const isWithdrawn = app.status === 'Cancelled' || app.status === 'Withdrawn';
-                                                    const isHighMatch = Number(app.fitScore ?? 0) >= 80;
-
-                                                    // ✅ TARGET HIGHLIGHT CHECK
-                                                    const isTargeted = String(targetApplicantId) === String(app.id);
-
-                                                    return (
-                                                        <div
-                                                            key={app.id}
-                                                            ref={el => applicantRefs.current[app.id] = el}
-                                                            className={`flex items-center justify-between p-4 rounded-xl border transition-all duration-500 ${isTargeted ? 'ring-2 ring-blue-500 scale-[1.02] bg-blue-50 shadow-sm' : 'bg-white'} ${isHighMatch && !isWithdrawn && !isTargeted ? 'border-l-4 border-l-emerald-500 bg-emerald-50/20' : ''} ${isWithdrawn ? 'bg-gray-50 opacity-60 grayscale' : 'shadow-sm hover:shadow-md'}`}
-                                                        >
-                                                            <div className="flex items-center gap-3">
-                                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isHighMatch && !isWithdrawn ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
-                                                                    {s?.name?.charAt(0)}
-                                                                </div>
-                                                                <div>
-                                                                    <p className="font-bold text-sm flex items-center gap-2">
-                                                                        {s?.name || 'Unknown'}
-                                                                        {isHighMatch && !isWithdrawn && <span className="bg-emerald-600 text-white text-[8px] px-1.5 py-0.5 rounded font-black uppercase">Best Fit</span>}
-                                                                        {isTargeted && <span className="animate-pulse bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded font-black uppercase">Found!</span>}
-                                                                    </p>
-                                                                    <p className="text-xs text-gray-500">{app.date}</p>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex items-center gap-4">
-                                                                <div className="text-right">
-                                                                    <p className={`text-xs font-black ${isHighMatch && !isWithdrawn ? 'text-emerald-700' : 'text-gray-600'}`}>{app.fitScore}% Match</p>
-                                                                    <div className="w-16 h-1.5 bg-gray-100 rounded-full mt-1 overflow-hidden">
-                                                                        <div className={`h-full ${isHighMatch && !isWithdrawn ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${app.fitScore}%` }}></div>
-                                                                    </div>
-                                                                    {app.matchReasons && (
-                                                                        <p className="text-[10px] text-gray-500 mt-1 max-w-[180px] truncate" title={app.matchReasons}>{app.matchReasons}</p>
-                                                                    )}
-                                                                    {isWithdrawn && app.rejectionReason && (
-                                                                        <p className="text-[10px] text-red-600 mt-1 max-w-[220px] truncate" title={`Withdrawal reason: ${app.rejectionReason}`}>
-                                                                            Withdrawal reason: {app.rejectionReason}
-                                                                        </p>
-                                                                    )}
-                                                                </div>
-
-                                                                {/* ✅ ADDED: Message Icon Button */}
-                                                                <button
-                                                                    onClick={() => !isWithdrawn && s && onOpenChat(s.id)}
-                                                                    disabled={isWithdrawn}
-                                                                    title="Message Applicant"
-                                                                    className="p-2 border rounded-lg hover:bg-blue-50 bg-white text-blue-600 disabled:text-gray-400 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors flex items-center justify-center shadow-sm"
-                                                                >
-                                                                    <MessageCircle size={16} />
-                                                                </button>
-
-                                                                <button onClick={() => !isWithdrawn && s && setViewApplicant(s)} className="text-xs font-bold px-3 py-2 border rounded-lg hover:bg-gray-50 bg-white">View Document</button>
-                                                                <select
-                                                                    className="text-xs font-bold border rounded-lg p-2 bg-white"
-                                                                    value={app.status}
-                                                                    onChange={(e) => onUpdateStatus(app.id, e.target.value)}
-                                                                    disabled={isWithdrawn}
-                                                                >
-                                                                    <option>Pending</option><option>Viewing</option><option>Interview</option><option>Hired</option><option>Rejected</option>
-                                                                    {isWithdrawn && <option disabled>Withdrawn</option>}
-                                                                </select>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                        <div className="mt-6 pt-6 border-t w-full">
+                                            
+                                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+                                                <h4 className="text-xs font-black text-gray-400 uppercase flex items-center gap-2">
+                                                    <User size={14} /> Applicants ({getSortedApplicants(j.id).length})
+                                                    {(applicantStatusFilter !== 'All' || minFitScoreFilter !== '') && <span className="text-[10px] text-orange-600 lowercase font-medium ml-1">(Filtered)</span>}
+                                                </h4>
+                                                
+                                                {/* The Toggle Switch */}
+                                                <div className="bg-gray-100 p-1 rounded-lg flex items-center gap-1 w-fit">
+                                                    <button 
+                                                        onClick={() => setViewModes(prev => ({...prev, [j.id]: 'list'}))} 
+                                                        className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${!isKanban ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:bg-gray-200'}`}
+                                                    >
+                                                        <List size={14}/> List
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setViewModes(prev => ({...prev, [j.id]: 'kanban'}))} 
+                                                        className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${isKanban ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:bg-gray-200'}`}
+                                                    >
+                                                        <LayoutGrid size={14}/> Board
+                                                    </button>
+                                                </div>
                                             </div>
+
+                                            {/* KANBAN BOARD VIEW */}
+                                            {isKanban ? (
+                                                <div className="w-full overflow-hidden">
+                                                    <div className="flex gap-4 overflow-x-auto pb-4 snap-x animate-in fade-in duration-300 w-full" style={{ scrollbarWidth: 'thin' }}>
+                                                        {['Pending', 'Viewing', 'Interview', 'Hired', 'Rejected'].map(colStatus => {
+                                                            const colApps = getSortedApplicants(j.id).filter(a => a.status === colStatus);
+                                                            
+                                                            return (
+                                                                <div key={colStatus} className="min-w-[250px] w-[250px] shrink-0 bg-gray-50/80 border border-gray-200 rounded-2xl flex flex-col max-h-[600px] snap-center">
+                                                                    <div className="p-3 border-b border-gray-200 flex justify-between items-center bg-gray-100/50 rounded-t-2xl">
+                                                                        <h5 className="font-bold text-gray-700 text-sm">{colStatus}</h5>
+                                                                        <span className="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-xs font-bold">{colApps.length}</span>
+                                                                    </div>
+                                                                    
+                                                                    {/* Column Body */}
+                                                                    <div className="overflow-y-auto flex-1 p-3 space-y-3">
+                                                                        {colApps.map(app => {
+                                                                            const s = seekers.find(u => String(u.id) === String(app.seekerId));
+                                                                            const isHighMatch = Number(app.fitScore ?? 0) >= 80;
+                                                                            const isTargeted = String(targetApplicantId) === String(app.id);
+                                                                            
+                                                                            return (
+                                                                                <div key={app.id} ref={el => applicantRefs.current[app.id] = el} className={`bg-white p-4 rounded-xl border shadow-sm transition-all duration-300 ${isTargeted ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:border-blue-300'}`}>
+                                                                                    <div className="flex items-center gap-3 mb-3">
+                                                                                        <div className={`w-10 h-10 rounded-full flex shrink-0 items-center justify-center font-bold ${isHighMatch ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                                                            {s?.name?.charAt(0) || '?'}
+                                                                                        </div>
+                                                                                        <div className="overflow-hidden">
+                                                                                            <p className="font-bold text-sm text-gray-900 truncate">{s?.name || 'Unknown'}</p>
+                                                                                            <p className="text-[10px] text-gray-500 mt-0.5">{app.date}</p>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    
+                                                                                    {/* Match Insight Button (Kanban) */}
+                                                                                    <div className="mb-3">
+                                                                                        <button onClick={() => setInsightData({ app, seeker: s, job: j })} className="w-full text-left bg-gray-50 p-2.5 rounded-lg hover:bg-blue-50 transition-colors group border border-transparent hover:border-blue-100">
+                                                                                            <div className="flex justify-between items-center mb-1.5">
+                                                                                                <span className={`text-xs font-black ${isHighMatch ? 'text-emerald-600' : 'text-blue-600'}`}>{app.fitScore || 0}% Match</span>
+                                                                                                <Target size={14} className="text-gray-400 group-hover:text-blue-500"/>
+                                                                                            </div>
+                                                                                            <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                                                                <div className={`h-full ${isHighMatch ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${app.fitScore || 0}%` }}></div>
+                                                                                            </div>
+                                                                                        </button>
+                                                                                    </div>
+                                                                                    
+                                                                                    <div className="flex items-center justify-between gap-2 border-t pt-3">
+                                                                                        <div className="flex gap-1">
+                                                                                            <button onClick={() => s && onOpenChat(s.id)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md" title="Message"><MessageCircle size={16}/></button>
+                                                                                            <button onClick={() => s && setViewApplicant(s)} className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-md" title="View Document"><FileText size={16}/></button>
+                                                                                        </div>
+                                                                                        <select 
+                                                                                            className="text-xs font-bold border rounded-md p-1.5 bg-gray-50 outline-none focus:ring-1 focus:ring-blue-500" 
+                                                                                            value={app.status} 
+                                                                                            onChange={(e) => onUpdateStatus(app.id, e.target.value)}
+                                                                                        >
+                                                                                            <option>Pending</option><option>Viewing</option><option>Interview</option><option>Hired</option><option>Rejected</option>
+                                                                                        </select>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                        
+                                                                        {colApps.length === 0 && (
+                                                                            <div className="text-center p-4 text-xs font-medium text-gray-400 italic border-2 border-dashed border-gray-200 rounded-xl">
+                                                                                No applicants
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                /* EXISTING LIST VIEW */
+                                                <div className="space-y-3 animate-in fade-in duration-300">
+                                                    {getSortedApplicants(j.id).map(app => {
+                                                        const s = seekers.find(u => String(u.id) === String(app.seekerId));
+                                                        const isWithdrawn = app.status === 'Cancelled' || app.status === 'Withdrawn';
+                                                        const isHighMatch = Number(app.fitScore ?? 0) >= 80;
+                                                        const isTargeted = String(targetApplicantId) === String(app.id);
+
+                                                        return (
+                                                            <div
+                                                                key={app.id}
+                                                                ref={el => applicantRefs.current[app.id] = el}
+                                                                className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border transition-all duration-500 gap-4 ${isTargeted ? 'ring-2 ring-blue-500 scale-[1.02] bg-blue-50 shadow-sm' : 'bg-white'} ${isHighMatch && !isWithdrawn && !isTargeted ? 'border-l-4 border-l-emerald-500 bg-emerald-50/20' : ''} ${isWithdrawn ? 'bg-gray-50 opacity-60 grayscale' : 'shadow-sm hover:shadow-md'}`}
+                                                            >
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 ${isHighMatch && !isWithdrawn ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                                        {s?.name?.charAt(0) || '?'}
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="font-bold text-sm flex items-center gap-2">
+                                                                            {s?.name || 'Unknown'}
+                                                                            {isHighMatch && !isWithdrawn && <span className="bg-emerald-600 text-white text-[8px] px-1.5 py-0.5 rounded font-black uppercase">Best Fit</span>}
+                                                                            {isTargeted && <span className="animate-pulse bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded font-black uppercase">Found!</span>}
+                                                                        </p>
+                                                                        <p className="text-xs text-gray-500">{app.date}</p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex flex-col sm:flex-row sm:items-center gap-4 w-full sm:w-auto">
+                                                                    {/* Match Insight Button (List) */}
+                                                                    <div className="text-left sm:text-right w-full sm:w-auto">
+                                                                        <button 
+                                                                            onClick={() => setInsightData({ app, seeker: s, job: j })} 
+                                                                            className="text-right group hover:bg-gray-50 p-1.5 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-gray-200 block w-full"
+                                                                        >
+                                                                            <div className="flex items-center sm:justify-end gap-1 mb-1">
+                                                                                <Target size={14} className="text-gray-400 group-hover:text-blue-500"/>
+                                                                                <p className={`text-xs font-black ${isHighMatch && !isWithdrawn ? 'text-emerald-700' : 'text-gray-600'}`}>{app.fitScore || 0}% Match</p>
+                                                                            </div>
+                                                                            <div className="w-full sm:w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden ml-auto">
+                                                                                <div className={`h-full ${isHighMatch && !isWithdrawn ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${app.fitScore || 0}%` }}></div>
+                                                                            </div>
+                                                                        </button>
+
+                                                                        {isWithdrawn && app.rejectionReason && (
+                                                                            <p className="text-[10px] text-red-600 mt-1 max-w-[220px] truncate" title={`Withdrawal reason: ${app.rejectionReason}`}>
+                                                                                Withdrawal reason: {app.rejectionReason}
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+
+                                                                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-3 sm:pt-0">
+                                                                        <button
+                                                                            onClick={() => !isWithdrawn && s && onOpenChat(s.id)}
+                                                                            disabled={isWithdrawn}
+                                                                            title="Message Applicant"
+                                                                            className="p-2 border rounded-lg hover:bg-blue-50 bg-white text-blue-600 disabled:text-gray-400 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors flex items-center justify-center shadow-sm"
+                                                                        >
+                                                                            <MessageCircle size={16} />
+                                                                        </button>
+
+                                                                        <button onClick={() => !isWithdrawn && s && setViewApplicant(s)} className="text-xs font-bold px-3 py-2 border rounded-lg hover:bg-gray-50 bg-white shadow-sm">View Doc</button>
+                                                                        <select
+                                                                            className="text-xs font-bold border rounded-lg p-2 bg-white shadow-sm outline-none"
+                                                                            value={app.status}
+                                                                            onChange={(e) => onUpdateStatus(app.id, e.target.value)}
+                                                                            disabled={isWithdrawn}
+                                                                        >
+                                                                            <option>Pending</option><option>Viewing</option><option>Interview</option><option>Hired</option><option>Rejected</option>
+                                                                            {isWithdrawn && <option disabled>Withdrawn</option>}
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-                                ))
+                                    );
+                                })
                             )}
                         </div>
                     </div>
@@ -832,7 +957,69 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
 
             </div>
 
-            {/* MODALS */}
+            {/* ✅ BULLETPROOF MATCH INSIGHTS MODAL */}
+            {insightData && (
+                <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden transform animate-in zoom-in duration-200">
+                        <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+                            <h2 className="text-xl font-bold flex items-center gap-2">
+                                <Target className="text-blue-600" /> Match Insights: {insightData.seeker?.name || 'Unknown Applicant'}
+                            </h2>
+                            <button onClick={() => setInsightData(null)}><X size={24} className="text-gray-400 hover:text-black" /></button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <div className="flex items-center justify-between bg-gray-50 p-6 rounded-xl border border-gray-100">
+                                <div>
+                                    <h3 className="text-sm font-black text-gray-400 uppercase tracking-wider mb-1">Overall Fit Score</h3>
+                                    <p className={`text-4xl font-black ${getMatchTextColorClass(insightData.app?.fitScore || 0)}`}>{insightData.app?.fitScore || 0}%</p>
+                                </div>
+                                <div className="text-right">
+                                     <h3 className="text-sm font-black text-gray-400 uppercase tracking-wider mb-1">Education Requirement</h3>
+                                     <p className={`text-xl font-bold ${insightData.app?.educationMatch === false ? 'text-red-600' : 'text-green-600'}`}>
+                                         {insightData.app?.educationMatch === false ? 'Failed' : 'Passed'}
+                                     </p>
+                                </div>
+                            </div>
+
+                            {/* ✅ NEW: EXPLICIT AUTO-DECLINE MESSAGE */}
+                            {insightData.app?.educationMatch === false && (
+                                <div className="bg-red-50 p-4 rounded-xl border border-red-200">
+                                    <h4 className="text-sm font-bold text-red-800 flex items-center gap-2 mb-1"><AlertCircle size={16}/> Auto-Disqualified</h4>
+                                    <p className="text-sm text-red-700">This candidate was automatically assigned a 0% match score because their educational attainment does not meet the minimum requirement for this position.</p>
+                                </div>
+                            )}
+                            
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="bg-green-50/50 p-5 rounded-xl border border-green-100">
+                                    <h4 className="text-sm font-bold text-green-800 mb-3 flex items-center gap-2"><CheckCircle size={16}/> Matched Skills</h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {Array.isArray(insightData.app?.matchedSkills) && insightData.app.matchedSkills.length > 0 ? insightData.app.matchedSkills.map((s, i) => (
+                                            <span key={i} className="bg-white text-green-700 text-xs font-bold px-2.5 py-1 rounded shadow-sm border border-green-200">{s}</span>
+                                        )) : <span className="text-xs text-gray-500">No matches</span>}
+                                    </div>
+                                </div>
+                                <div className="bg-red-50/50 p-5 rounded-xl border border-red-100">
+                                    <h4 className="text-sm font-bold text-red-800 mb-3 flex items-center gap-2"><XCircle size={16}/> Missing Skills</h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {Array.isArray(insightData.app?.missingSkills) && insightData.app.missingSkills.length > 0 ? insightData.app.missingSkills.map((s, i) => (
+                                            <span key={i} className="bg-white text-red-700 text-xs font-bold px-2.5 py-1 rounded shadow-sm border border-red-200">{s}</span>
+                                        )) : <span className="text-xs text-gray-500">None missing</span>}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {insightData.app?.matchReasons && (
+                                <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100">
+                                    <h4 className="text-sm font-bold text-blue-800 mb-2 flex items-center gap-2"><Info size={16}/> System Reasoning</h4>
+                                    <p className="text-sm text-gray-700">{insightData.app.matchReasons}</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* APPLICANT PROFILE MODAL */}
             {viewApplicant && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden transform animate-in zoom-in duration-200">
@@ -922,4 +1109,3 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
 };
 
 export default EmployerDashboard;
-

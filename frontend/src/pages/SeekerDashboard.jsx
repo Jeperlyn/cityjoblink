@@ -3,8 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Trash2, FileText, ChevronDown, ChevronUp, ChevronLeft, Search, 
   Briefcase, Info, User, Users, Lock, CheckCircle, XCircle, 
-  Star, Target, Zap, TrendingUp, Upload, FilePlus, 
-  ExternalLink, Clock, MapPin, FileCheck, X, AlertCircle, Calendar
+  Star, Target, Zap, TrendingUp, Upload, FilePlus, Bookmark,
+  ExternalLink, Clock, MapPin, FileCheck, X, AlertCircle, Calendar, Eye
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import 'sweetalert2/dist/sweetalert2.min.css';
@@ -154,6 +154,17 @@ const EmployerLinks = ({ job, compact = false, containerClassName = '' }) => {
   );
 };
 
+const getMatchColorClass = (score) => {
+  if (score >= 80) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (score >= 50) return 'bg-amber-50 text-amber-700 border-amber-200';
+  return 'bg-red-50 text-red-700 border-red-200';
+};
+const getMatchTextColorClass = (score) => {
+  if (score >= 80) return 'text-emerald-600';
+  if (score >= 50) return 'text-amber-500';
+  return 'text-red-500';
+};
+
 // =====================================================
 // 2. COMPONENT: MATCH DETAILS PAGE (Skill Analysis)
 // =====================================================
@@ -180,7 +191,7 @@ export const JobDetailsPage = ({ job, matchData, onBack }) => {
           </div>
           <div className="text-center bg-gray-50 px-8 py-4 rounded-2xl border border-gray-100 min-w-[140px]">
              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Match Rate</p>
-             <p className={`text-3xl font-bold ${score >= 70 ? 'text-green-600' : 'text-orange-500'}`}>{score}%</p>
+             <p className={`text-3xl font-bold ${getMatchTextColorClass(score)}`}>{score}%</p>
           </div>
         </div>
 
@@ -217,8 +228,8 @@ export const JobDetailsPage = ({ job, matchData, onBack }) => {
 // =====================================================
 // 3. COMPONENT: FIND JOBS (The Job Listings)
 // =====================================================
-// ✅ Added onGoToProfile prop so the parent component can redirect the user
-export const FindJobs = ({ jobs = [], recommendations = [], onApply, applications = [], userId, profile, onGoToProfile }) => {
+// ✅ FEATURE: Added savedJobs and onToggleSaveJob
+export const FindJobs = ({ jobs = [], recommendations = [], onApply, applications = [], userId, profile, onGoToProfile, savedJobs = [], onToggleSaveJob }) => {
   const [keyword, setKeyword] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
   const [selectedType, setSelectedType] = useState('');
@@ -288,8 +299,9 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
               if (!recJob) return null;
 
               const alreadyApplied = applications.some(a => a.jobId === recJob.id && a.seekerId === userId);
+              const isSaved = savedJobs.includes(recJob.id);
+              const scoreNum = Number(rec.matchScore || 0);
 
-              // ✅ NEW BUTTON LOGIC: Changes Action and Styling instead of Disabling
               let btnText = 'Apply for this Position';
               let btnTitle = '';
               let btnAction = () => onApply(recJob.id);
@@ -314,9 +326,14 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
                       <h3 className="font-bold text-lg text-gray-900">{recJob.title}</h3>
                       <p className="text-sm font-semibold text-blue-600">{recJob.company}</p>
                     </div>
-                    <span className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-black border border-emerald-200">
-                      {Number(rec.matchScore || 0)}% Match
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={(e) => { e.stopPropagation(); if(onToggleSaveJob) onToggleSaveJob(recJob.id); }} className={`p-2 rounded-full transition-colors ${isSaved ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'}`} title={isSaved ? "Remove from Saved" : "Save Job"}>
+                          <Bookmark size={20} className={isSaved ? "fill-current" : ""} />
+                      </button>
+                      <span className={`px-3 py-1.5 rounded-lg text-xs font-black border ${getMatchColorClass(scoreNum)}`}>
+                        {scoreNum}% Match
+                      </span>
+                    </div>
                   </div>
 
                   <div className="text-xs text-gray-500 mb-4 space-y-1">
@@ -354,8 +371,8 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
         {filtered.map(job => {
           const isExp = expandedId === job.id;
           const hasApp = applications.some(a => a.jobId === job.id && a.seekerId === userId);
+          const isSaved = savedJobs.includes(job.id);
 
-          // ✅ NEW BUTTON LOGIC
           let btnText = 'Apply for this Position';
           let btnTitle = '';
           let btnAction = () => onApply(job.id);
@@ -386,6 +403,9 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
                   </div>
                 </div>
                 <div className="flex items-center gap-4 w-full md:w-auto">
+                  <button onClick={(e) => { e.stopPropagation(); if(onToggleSaveJob) onToggleSaveJob(job.id); }} className={`p-2 rounded-full transition-colors ${isSaved ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'}`} title={isSaved ? "Remove from Saved" : "Save Job"}>
+                      <Bookmark size={20} className={isSaved ? "fill-current" : ""} />
+                  </button>
                   <div className="flex gap-2">
                     {job.location && <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium">{job.location}</span>}
                     {job.type && <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium">{job.type}</span>}
@@ -762,8 +782,130 @@ export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplic
 };
 
 // =====================================================
-// 5. COMPONENTS: TRAININGS & JOB FAIRS
+// 5. COMPONENTS: TRAININGS, JOB FAIRS & SAVED JOBS
 // =====================================================
+
+// ✅ NEW FEATURE: Saved Jobs View Component
+export const MySavedJobs = ({ jobs = [], savedJobs = [], applications = [], userId, profile, onApply, onToggleSaveJob, onGoToProfile }) => {
+  const [expandedId, setExpandedId] = useState(null);
+  
+  const idVerificationStatus = profile?.idVerificationStatus || profile?.id_verification_status;
+  const isVerified = !profile || idVerificationStatus === 'verified';
+  const hasResume = profile?.resume_path || profile?.resumePath || (profile?.educational_attainment && profile?.educational_attainment !== 'Not Specified');
+
+  const mySavedData = jobs.filter(j => savedJobs.includes(j.id));
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+        <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <Bookmark className="text-blue-600" size={24}/> My Saved Jobs
+        </h2>
+        
+        {mySavedData.length === 0 ? (
+          <div className="bg-white p-12 rounded-2xl border border-gray-200 shadow-sm text-center flex flex-col items-center justify-center">
+            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 mb-4">
+              <Bookmark size={32} />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 mb-1">No saved jobs yet</h3>
+            <p className="text-gray-500 text-sm">Click the bookmark icon on any job posting to save it for later.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {mySavedData.map(job => {
+              const isExp = expandedId === job.id;
+              const hasApp = applications.some(a => a.jobId === job.id && a.seekerId === userId);
+
+              let btnText = 'Apply for this Position';
+              let btnTitle = '';
+              let btnAction = () => onApply(job.id);
+              let btnClass = 'text-white bg-blue-600 hover:bg-blue-700';
+              
+              if (!isVerified) {
+                  btnText = 'Verification Required';
+                  btnTitle = 'Click to verify your ID in your profile';
+                  btnAction = () => { if (onGoToProfile) onGoToProfile(); };
+                  btnClass = 'text-gray-700 bg-gray-200 hover:bg-gray-300';
+              } else if (!hasResume) {
+                  btnText = 'Upload Resume First';
+                  btnTitle = 'Click to upload your resume in your profile';
+                  btnAction = () => { if (onGoToProfile) onGoToProfile(); };
+                  btnClass = 'text-gray-700 bg-gray-200 hover:bg-gray-300';
+              }
+
+              return (
+                <div key={job.id} className={`bg-white rounded-2xl border transition-all duration-200 ${isExp ? 'border-blue-300 shadow-lg' : 'border-gray-200 shadow-sm hover:border-blue-200 hover:shadow-md'}`}>
+                  <div className="p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer" onClick={() => setExpandedId(isExp ? null : job.id)}>
+                    <div className="flex gap-5 items-center">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-colors ${isExp ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-600'}`}>
+                        <Briefcase size={24}/>
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-lg text-gray-900">{job.title}</h3>
+                        <p className="text-sm font-medium text-gray-500 mt-0.5">{job.company}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 w-full md:w-auto">
+                      <button onClick={(e) => { e.stopPropagation(); if(onToggleSaveJob) onToggleSaveJob(job.id); }} className="p-2 rounded-full text-blue-600 bg-blue-50 transition-colors" title="Remove from Saved">
+                          <Bookmark size={20} className="fill-current" />
+                      </button>
+                      <div className="flex gap-2">
+                        {job.location && <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium">{job.location}</span>}
+                        {job.type && <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium">{job.type}</span>}
+                      </div>
+                      <button className="hidden md:block text-gray-400 hover:text-gray-600">
+                        {isExp ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExp && (
+                    <div className="px-6 md:px-8 pb-8 pt-2 animate-in slide-in-from-top-2">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-6 border-y border-gray-100 mb-6">
+                        <div>
+                          <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-1">Location</p>
+                          <p className="font-medium text-gray-900 text-sm">{job.location}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-1">Salary</p>
+                          <p className="font-medium text-gray-900 text-sm">{job.salary || 'Competitive'}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-1">Job Type</p>
+                          <p className="font-medium text-gray-900 text-sm">{job.type}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="mb-8">
+                        <h4 className="text-sm font-bold text-gray-900 mb-3">Job Description</h4>
+                        <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">{job.description}</p>
+                      </div>
+
+                      <EmployerLinks job={job} compact containerClassName="mb-8" />
+
+                      {!hasApp ? (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); btnAction(); }} 
+                          className={`w-full md:w-auto px-8 py-3 rounded-xl font-bold transition-colors shadow-sm ${btnClass}`}
+                          title={btnTitle}
+                        >
+                          {btnText}
+                        </button>
+                      ) : (
+                        <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-xl font-bold border border-green-200">
+                          <CheckCircle size={18}/> Application Submitted
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+    </div>
+  );
+};
+
 
 // Helper: Check if withdrawal is allowed (at least 1 week before event)
 const canWithdraw = (eventDate) => {
@@ -936,7 +1078,7 @@ const toastMsg = (title, icon = 'success') => {
   });
 };
 
-const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], initialTab, onCancelApplication, onViewJob, onNavigate, onUpdateProfile, onWithdrawTraining, onSubmitEmployerFeedback }) => {
+const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], savedJobs = [], initialTab, onCancelApplication, onViewJob, onNavigate, onUpdateProfile, onWithdrawTraining, onSubmitEmployerFeedback, onToggleSaveJob, onApply }) => {
   const [activeTab, setActiveTab] = useState(initialTab || 'overview');
   const [resumeFile, setResumeFile] = useState(null);
   const [idDocumentFile, setIdDocumentFile] = useState(null);
@@ -954,6 +1096,8 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
   const [idQrPreview, setIdQrPreview] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [withdrawModal, setWithdrawModal] = useState({ isOpen: false, type: null, id: null, title: '' });
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  
   const fileInputRef = useRef(null);
   const idFileInputRef = useRef(null);
 
@@ -1045,7 +1189,6 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
     profile?.instagram_url,
   ]);
 
-  // Withdraw from training
   const handleWithdrawTraining = (trainingId) => {
     const training = trainings.find(t => t.id === trainingId);
     setWithdrawModal({
@@ -1056,7 +1199,6 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
     });
   };
 
-  // Withdraw from job fair
   const handleWithdrawJobFair = (jobFairId) => {
     const jobFair = jobFairs.find(f => f.id === jobFairId);
     setWithdrawModal({
@@ -1067,7 +1209,6 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
     });
   };
 
-  // Confirm withdrawal
   const handleConfirmWithdrawal = async () => {
     if (withdrawModal.type === 'training') {
         if (typeof onWithdrawTraining === 'function') {
@@ -1121,7 +1262,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
     } catch (error) {
       console.error('Upload Error:', error);
       alert(error?.message || 'Failed to upload resume to server. Please try again.');
-      setResumeFile(null); // revert on failure
+      setResumeFile(null); 
     }
   };
 
@@ -1323,12 +1464,28 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
     }
   };
 
-  // ✅ NEW HELPER: Handles internal redirect when "Upload Resume First" is clicked inside the FindJobs tab
   const handleRedirectToProfile = () => {
     setActiveTab('profile');
     setTimeout(() => {
       document.getElementById('resume-section')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
+  };
+
+  let filledFields = 0;
+  let totalFields = 5;
+  if (profile?.name && profile?.email && profile?.bday_month) filledFields++; 
+  if (profile?.educational_attainment && profile?.educational_attainment !== 'Not Specified') filledFields++; 
+  if (profile?.qc_id) filledFields++; 
+  if (resumeFile) filledFields++; 
+  if (backgroundLinks.portfolioUrl || backgroundLinks.linkedinUrl || backgroundLinks.githubUrl || backgroundLinks.facebookUrl || backgroundLinks.instagramUrl) filledFields++; 
+  
+  const profileCompleteness = Math.round((filledFields / totalFields) * 100);
+
+  const getResumeUrl = () => {
+    if (!profile?.resume_path) return '';
+    if (profile.resume_path.startsWith('http')) return profile.resume_path;
+    const baseUrl = API_BASE.replace(/\/api\/?$/, '');
+    return `${baseUrl}/${profile.resume_path}`;
   };
 
   return (
@@ -1361,11 +1518,12 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
         
         {/* Sleek Tab Navigation */}
         <nav className="flex gap-2 mb-10 bg-gray-100/80 p-1.5 rounded-2xl w-fit overflow-x-auto mx-auto md:mx-0 shadow-inner">
-          {['overview', 'trainings', 'job fairs', 'profile'].map(tab => (
+          {/* ✅ FEATURE: Added 'saved jobs' to the tab navigation */}
+          {['overview', 'saved jobs', 'trainings', 'job fairs', 'profile'].map(tab => (
             <button 
                 key={tab} 
                 onClick={() => setActiveTab(tab)} 
-                className={`px-6 py-2.5 rounded-xl text-sm font-semibold capitalize transition-all duration-200 ${activeTab === tab ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'}`}
+                className={`px-6 py-2.5 rounded-xl text-sm font-semibold capitalize transition-all duration-200 whitespace-nowrap ${activeTab === tab ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'}`}
             >
               {tab}
             </button>
@@ -1373,15 +1531,33 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
         </nav>
 
         {activeTab === 'overview' && <DashboardOverview applications={applications} jobs={jobs} onCancelApplication={onCancelApplication} onViewJob={onViewJob} onSubmitEmployerFeedback={onSubmitEmployerFeedback} />}
+        {/* ✅ FEATURE: Render the new MySavedJobs tab */}
+        {activeTab === 'saved jobs' && <MySavedJobs jobs={jobs} savedJobs={savedJobs} applications={applications} profile={profile} userId={profile?.id} onApply={onApply} onToggleSaveJob={onToggleSaveJob} onGoToProfile={handleRedirectToProfile} />}
         {activeTab === 'trainings' && <MyTrainings trainings={trainings} profile={profile} onWithdrawTraining={handleWithdrawTraining} />}
         {activeTab === 'job fairs' && <MyJobFairs jobFairs={jobFairs} profile={profile} onWithdrawJobFair={handleWithdrawJobFair} />}
         
         {/* PROFILE TAB */}
         {activeTab === 'profile' && (
           <div className="max-w-4xl space-y-6 animate-in fade-in duration-300">
+
+            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                       Profile Completeness
+                    </h4>
+                    <span className="font-bold text-blue-600">{profileCompleteness}%</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                    <div 
+                       className={`h-2.5 rounded-full transition-all duration-500 ${profileCompleteness === 100 ? 'bg-green-500' : 'bg-blue-600'}`} 
+                       style={{ width: `${profileCompleteness}%` }}
+                    ></div>
+                </div>
+                <p className="text-xs text-gray-500 mt-3">Complete your profile (Resume, Links, ID) to increase your chances of getting hired.</p>
+            </div>
+
             <div className="bg-white p-8 md:p-10 rounded-2xl border border-gray-200 shadow-sm">
               
-              {/* Profile Header */}
               <div className="flex items-center gap-6 mb-10 pb-8 border-b border-gray-100">
                 <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-3xl font-bold">
                     {profile?.name?.charAt(0) || <User />}
@@ -1394,7 +1570,6 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                 </div>
               </div>
 
-              {/* Information Grid */}
               <h4 className="text-lg font-bold text-gray-900 mb-6">Personal Information</h4>
               <div className="grid md:grid-cols-2 gap-4 mb-10">
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
@@ -1481,11 +1656,9 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                 </div>
               </div>
               
-              {/* Resume Tools Grid */}
               <h4 id="resume-section" className="text-lg font-bold text-gray-900 mb-6">Resume & Documents</h4>
               <div className="grid md:grid-cols-2 gap-5">
                 
-                {/* Resume Builder */}
                 <button 
                   onClick={() => onNavigate('resume-builder')} 
                   className="p-6 border border-gray-200 rounded-2xl hover:border-blue-300 hover:shadow-md transition-all text-left group bg-white"
@@ -1497,7 +1670,6 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                   <p className="text-sm text-gray-500 font-medium">Create a structured, ATS-friendly resume from scratch.</p>
                 </button>
 
-                {/* Resume Upload Module */}
                 <div className="p-6 border border-gray-200 rounded-2xl bg-white flex flex-col justify-between">
                   <div>
                       <div className="bg-gray-50 text-gray-400 w-12 h-12 rounded-xl flex items-center justify-center mb-4">
@@ -1524,13 +1696,24 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                           </p>
                         </div>
                       </div>
-                      <button 
-                        onClick={handleRemoveResume} 
-                        className="p-1.5 hover:bg-white text-gray-400 hover:text-red-500 rounded-lg transition-colors shrink-0"
-                        title="Remove Document"
-                      >
-                        <X size={18}/>
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                         {profile?.resume_path && (
+                            <button 
+                                onClick={() => setIsPreviewOpen(true)} 
+                                className="p-1.5 hover:bg-white text-gray-500 hover:text-blue-600 rounded-lg transition-colors"
+                                title="Preview Resume"
+                            >
+                                <Eye size={18}/>
+                            </button>
+                         )}
+                         <button 
+                            onClick={handleRemoveResume} 
+                            className="p-1.5 hover:bg-white text-gray-400 hover:text-red-500 rounded-lg transition-colors"
+                            title="Remove Document"
+                         >
+                            <X size={18}/>
+                         </button>
+                      </div>
                     </div>
                   )}
                   <input 
@@ -1662,6 +1845,29 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
               </div>
             </div>
           </div>
+        )}
+
+        {isPreviewOpen && profile?.resume_path && (
+            <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+              <div className="bg-white rounded-2xl flex flex-col w-full max-w-4xl h-[85vh] shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
+                <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50">
+                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                     <FileText size={20} className="text-blue-600"/>
+                     Document Preview
+                  </h3>
+                  <button onClick={() => setIsPreviewOpen(false)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg p-2 transition-colors">
+                     <X size={20}/>
+                  </button>
+                </div>
+                <div className="flex-1 bg-gray-200 p-4">
+                  <iframe
+                    src={getResumeUrl()}
+                    className="w-full h-full rounded-xl shadow-sm border border-gray-300 bg-white"
+                    title="Resume Preview"
+                  ></iframe>
+                </div>
+              </div>
+            </div>
         )}
       </div>
     </div>

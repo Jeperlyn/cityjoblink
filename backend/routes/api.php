@@ -34,6 +34,8 @@ Route::get('/applications/seeker', [FeatureController::class, 'seekerApplication
 Route::get('/applications/employer', [FeatureController::class, 'employerApplications']);
 Route::patch('/applications/status', [FeatureController::class, 'updateApplicationStatus']);
 Route::post('/applications/feedback', [FeatureController::class, 'submitEmployerFeedback']);
+Route::get('/seeker/saved-jobs', [FeatureController::class, 'getSavedJobs']);
+Route::post('/seeker/saved-jobs/toggle', [FeatureController::class, 'toggleSaveJob']);
 
 // --- Other Features ---
 Route::get('/trainings', [FeatureController::class, 'trainings']);
