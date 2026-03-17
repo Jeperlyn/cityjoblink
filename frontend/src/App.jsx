@@ -73,6 +73,8 @@ const normalizeUserProfile = (rawUser) => {
         uploadedDocs: typeof rawUser.uploadedDocs === 'boolean' ? rawUser.uploadedDocs : !!rawUser.uploaded_docs,
         verificationDocPath: rawUser.verificationDocPath || rawUser.verification_doc_path || null,
         seekerIdDocPath: rawUser.seekerIdDocPath || rawUser.seeker_id_doc_path || null,
+        seekerIdDocOriginalName: rawUser.seekerIdDocOriginalName || rawUser.seeker_id_doc_original_name || null,
+        seekerIdDocStoredName: rawUser.seekerIdDocStoredName || rawUser.seeker_id_doc_stored_name || null,
         portfolioUrl: rawUser.portfolioUrl || rawUser.portfolio_url || null,
         linkedinUrl: rawUser.linkedinUrl || rawUser.linkedin_url || null,
         githubUrl: rawUser.githubUrl || rawUser.github_url || null,
@@ -81,6 +83,12 @@ const normalizeUserProfile = (rawUser) => {
         idVerificationStatus: rawUser.idVerificationStatus || rawUser.id_verification_status || 'not_submitted',
         idVerificationReason: rawUser.idVerificationReason || rawUser.id_verification_reason || null,
         idVerificationConfidence: rawUser.idVerificationConfidence ?? rawUser.id_verification_confidence ?? null,
+        idVerificationCheckedAt: rawUser.idVerificationCheckedAt || rawUser.id_verification_checked_at || null,
+        idExtractedName: rawUser.idExtractedName || rawUser.id_extracted_name || null,
+        idExtractedBirthdate: rawUser.idExtractedBirthdate || rawUser.id_extracted_birthdate || null,
+        idExtractedGender: rawUser.idExtractedGender || rawUser.id_extracted_gender || null,
+        idBirthdateMatchesProfile: rawUser.idBirthdateMatchesProfile ?? rawUser.id_birthdate_matches_profile ?? null,
+        idGenderMatchesProfile: rawUser.idGenderMatchesProfile ?? rawUser.id_gender_matches_profile ?? null,
         isPriorityVerified: typeof rawUser.isPriorityVerified === 'boolean'
             ? rawUser.isPriorityVerified
             : !!rawUser.is_priority_verified,
@@ -138,6 +146,9 @@ const mapBackendApplication = (app, seekerId) => ({
     status: app.status === 'Withdrawn' ? 'Cancelled' : app.status,
     date: app.applied_at || app.created_at || '',
     rejectionReason: app.rejection_reason || '',
+    feedbackRating: Number(app.feedback_rating ?? 0),
+    feedbackComment: app.feedback_comment || '',
+    feedbackSubmittedAt: app.feedback_submitted_at || null,
 });
 
 const mapBackendEmployerApplication = (app) => ({
@@ -281,6 +292,13 @@ const App = () => {
     const [targetChatId, setTargetChatId] = useState(null);
     const [toastMessages, setToastMessages] = useState([]);
     const [adminEmployers, setAdminEmployers] = useState([]);
+    const [adminSeekers, setAdminSeekers] = useState([]);
+    const [adminAnalytics, setAdminAnalytics] = useState({
+        summary: {},
+        ratingBreakdown: [],
+        decisionBreakdown: [],
+        topEmployers: [],
+    });
     const [employerSeekers, setEmployerSeekers] = useState([]);
 
     // helper used by seeker dashboard to view job metrics/details
@@ -334,6 +352,105 @@ const App = () => {
         if (!response.ok || data.status !== 'success') throw new Error(data?.message || 'Failed loading employers');
 
         return (data.employers || []).map((employer) => normalizeUserProfile(employer));
+    };
+
+    const fetchAdminSeekers = async () => {
+        const response = await fetch(`${API_BASE}/admin/seekers`, { headers: { Accept: 'application/json' } });
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') throw new Error(data?.message || 'Failed loading seekers');
+
+        return (data.seekers || []).map((seeker) => normalizeUserProfile(seeker));
+    };
+
+    const fetchAdminAnalytics = async () => {
+        const response = await fetch(`${API_BASE}/admin/analytics`, { headers: { Accept: 'application/json' } });
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') throw new Error(data?.message || 'Failed loading analytics');
+
+        const analytics = data.analytics || {};
+
+        return {
+            summary: {
+                totalEmployers: Number(analytics.summary?.total_employers ?? 0),
+                verifiedEmployers: Number(analytics.summary?.verified_employers ?? 0),
+                pendingEmployerReviews: Number(analytics.summary?.pending_employer_reviews ?? 0),
+                pendingSeekerReviews: Number(analytics.summary?.pending_seeker_reviews ?? 0),
+                totalFeedback: Number(analytics.summary?.total_feedback ?? 0),
+                averageRating: Number(analytics.summary?.average_rating ?? 0),
+            },
+            ratingBreakdown: (analytics.rating_breakdown || []).map((item) => ({
+                rating: Number(item.rating ?? 0),
+                total: Number(item.total ?? 0),
+            })),
+            decisionBreakdown: (analytics.decision_breakdown || []).map((item) => ({
+                status: item.status,
+                total: Number(item.total ?? 0),
+            })),
+            topEmployers: (analytics.top_employers || []).map((item) => {
+                const normalized = normalizeUserProfile(item);
+
+                return {
+                    ...normalized,
+                    employerLabel: item.employer_label || normalized.companyName || normalized.name || normalized.email,
+                    totalJobs: Number(item.total_jobs ?? item.totalJobs ?? 0),
+                    totalApplications: Number(item.total_applications ?? item.totalApplications ?? 0),
+                    hiredCount: Number(item.hired_count ?? item.hiredCount ?? 0),
+                    interviewCount: Number(item.interview_count ?? item.interviewCount ?? 0),
+                    feedbackCount: Number(item.feedback_count ?? item.feedbackCount ?? 0),
+                    averageRating: Number(item.average_rating ?? item.averageRating ?? 0),
+                    conversionRate: Number(item.conversion_rate ?? item.conversionRate ?? 0),
+                };
+            }),
+        };
+    };
+
+    const refreshAdminData = async ({ includeEmployers = true, includeSeekers = true, includeAnalytics = true } = {}) => {
+        const requests = [];
+
+        if (includeEmployers) {
+            requests.push(
+                fetchAdminEmployers().then((data) => ({ key: 'employers', data }))
+            );
+        }
+
+        if (includeSeekers) {
+            requests.push(
+                fetchAdminSeekers().then((data) => ({ key: 'seekers', data }))
+            );
+        }
+
+        if (includeAnalytics) {
+            requests.push(
+                fetchAdminAnalytics().then((data) => ({ key: 'analytics', data }))
+            );
+        }
+
+        const results = await Promise.allSettled(requests);
+        const errors = [];
+
+        results.forEach((result) => {
+            if (result.status === 'fulfilled') {
+                const { key, data } = result.value;
+
+                if (key === 'employers') {
+                    setAdminEmployers(data);
+                }
+
+                if (key === 'seekers') {
+                    setAdminSeekers(data);
+                }
+
+                if (key === 'analytics') {
+                    setAdminAnalytics(data);
+                }
+
+                return;
+            }
+
+            errors.push(result.reason);
+        });
+
+        return { errors };
     };
 
     const fetchTrainings = async () => {
@@ -539,21 +656,10 @@ const App = () => {
         if (!user || user.role !== 'Admin') return;
 
         const bootstrapAdmin = async () => {
-            try {
-                const [employersData, jobsData] = await Promise.all([
-                    fetchAdminEmployers(),
-                    fetch(`${API_BASE}/jobs?include_closed=1`, { headers: { Accept: 'application/json' } })
-                        .then((response) => response.json().then((data) => ({ ok: response.ok, data })))
-                        .then(({ ok, data }) => {
-                            if (!ok || data.status !== 'success') throw new Error(data?.message || 'Failed loading jobs');
-                            return (data.jobs || []).map(mapBackendJob);
-                        }),
-                ]);
+            const { errors } = await refreshAdminData();
 
-                setAdminEmployers(employersData);
-                setJobs(jobsData);
-            } catch (error) {
-                console.error('Admin bootstrap failed:', error);
+            if (errors.length > 0) {
+                console.error('Admin bootstrap partial failure:', errors);
             }
         };
 
@@ -947,11 +1053,81 @@ const App = () => {
                 throw new Error(data?.message || 'Failed to review employer.');
             }
 
-            const employersData = await fetchAdminEmployers();
-            setAdminEmployers(employersData);
+            const { errors } = await refreshAdminData({ includeSeekers: false });
+            if (errors.length > 0) {
+                console.error('Admin employer refresh partial failure:', errors);
+            }
             showToast(approved ? 'Employer approved.' : 'Employer rejected.', 'success');
         } catch (error) {
             showToast(error?.message || 'Failed to review employer.', 'error');
+        }
+    };
+
+    const handleReviewSeekerId = async (seekerId, approved, reason = '') => {
+        try {
+            const response = await fetch(`${API_BASE}/admin/seekers/review`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                    seeker_id: seekerId,
+                    approved,
+                    reason: reason || null,
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data?.message || 'Failed to review seeker ID.');
+            }
+
+            const { errors } = await refreshAdminData({ includeEmployers: false });
+            if (errors.length > 0) {
+                console.error('Admin seeker refresh partial failure:', errors);
+            }
+            showToast(approved ? 'Seeker ID verified.' : 'Seeker ID marked as unverified.', 'success');
+            return true;
+        } catch (error) {
+            showToast(error?.message || 'Failed to review seeker ID.', 'error');
+            return false;
+        }
+    };
+
+    const handleSubmitEmployerFeedback = async (applicationId, rating, feedbackComment) => {
+        if (!user?.email) {
+            showToast('Missing account email.', 'error');
+            return false;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/applications/feedback`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                    email: user.email,
+                    application_id: applicationId,
+                    rating,
+                    feedback_comment: feedbackComment || null,
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data?.message || 'Failed to submit feedback.');
+            }
+
+            const refreshedApplications = await fetchApplications(user.email, user.id);
+            setApplications(refreshedApplications);
+            showToast(data?.message || 'Feedback submitted successfully.', 'success');
+            return true;
+        } catch (error) {
+            showToast(error?.message || 'Failed to submit feedback.', 'error');
+            return false;
         }
     };
 
@@ -1065,6 +1241,7 @@ const App = () => {
                 onViewJob={(j) => handleViewJobDetails(j, 'seeker-dash')}
                 onCancelApplication={handleCancelApplication}
                 onWithdrawTraining={handleWithdrawTraining}
+                onSubmitEmployerFeedback={handleSubmitEmployerFeedback}
                 onUpdateProfile={(updatedUser) => {
                     const normalized = normalizeUserProfile(updatedUser);
                     setUser(normalized);
@@ -1076,7 +1253,7 @@ const App = () => {
         // ✅ FIXED: Passed handleUpdateJob to EmployerDashboard
         if (currentView === 'employer-dash') return <EmployerDashboard profile={user} jobs={jobs} applications={applications} seekers={employerSeekers} onPostJob={handlePostJob} onUpdateJob={handleUpdateJob} onUpdateStatus={handleUpdateAppStatus} onUpdateProfile={(u)=>setUser(normalizeUserProfile(u))} onUploadDocs={handleUploadEmployerDocs} onOpenChat={(id)=>{setTargetChatId(id); setCurrentView('messages');}} />;
         
-        if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} onVerifyEmployer={handleVerifyEmployer} jobFairs={jobFairs} onAddJobFair={()=>{}} />;
+        if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} seekers={adminSeekers} analytics={adminAnalytics} onVerifyEmployer={handleVerifyEmployer} onReviewSeeker={handleReviewSeekerId} jobFairs={jobFairs} onAddJobFair={()=>{}} />;
         if (currentView === 'matchmaker') return <FindJobs jobs={jobs} recommendations={seekerRecommendations || []} onApply={handleApply} applications={applications} userId={user.id} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} />;
         if (currentView === 'job-details') {
             const matchInfo = selectedJobMatchData || calculateMatchScore(selectedJob?.requiredSkills || [], user?.skills || []);

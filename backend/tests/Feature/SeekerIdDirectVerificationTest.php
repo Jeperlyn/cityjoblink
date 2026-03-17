@@ -48,7 +48,7 @@ class SeekerIdDirectVerificationTest extends TestCase
 
         $user->refresh();
 
-        $this->assertSame('not_submitted', $user->id_verification_status);
+        $this->assertSame('manual_review', $user->id_verification_status);
         $this->assertFalse((bool) $user->is_priority_verified);
         $this->assertNull($user->id_verification_provider);
         $this->assertNull($user->id_verification_reason);
@@ -85,7 +85,7 @@ class SeekerIdDirectVerificationTest extends TestCase
 
         $user->refresh();
 
-        $this->assertSame('not_submitted', $user->id_verification_status);
+        $this->assertSame('manual_review', $user->id_verification_status);
         $this->assertFalse((bool) $user->is_priority_verified);
         $this->assertSame('9999-9999-9999-99', (string) $user->qc_id);
         $this->assertNotEmpty((string) $user->seeker_id_doc_path);

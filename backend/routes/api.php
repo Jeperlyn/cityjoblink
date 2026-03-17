@@ -33,13 +33,17 @@ Route::patch('/applications/withdraw', [FeatureController::class, 'withdrawAppli
 Route::get('/applications/seeker', [FeatureController::class, 'seekerApplications']);
 Route::get('/applications/employer', [FeatureController::class, 'employerApplications']);
 Route::patch('/applications/status', [FeatureController::class, 'updateApplicationStatus']);
+Route::post('/applications/feedback', [FeatureController::class, 'submitEmployerFeedback']);
 
 // --- Other Features ---
 Route::get('/trainings', [FeatureController::class, 'trainings']);
 Route::post('/trainings/register', [FeatureController::class, 'registerTraining']);
 Route::patch('/trainings/withdraw', [FeatureController::class, 'withdrawTraining']);
+Route::get('/admin/analytics', [FeatureController::class, 'adminAnalytics']);
 Route::get('/admin/employers', [FeatureController::class, 'adminEmployers']);
 Route::patch('/admin/employers/review', [FeatureController::class, 'reviewEmployer']);
+Route::get('/admin/seekers', [FeatureController::class, 'adminSeekers']);
+Route::patch('/admin/seekers/review', [FeatureController::class, 'reviewSeekerId']);
 Route::post('/employer/jobs', [EmployerController::class, 'storeJob']);
 
 // --- Notifications & Pulse ---

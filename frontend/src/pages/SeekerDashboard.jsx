@@ -400,12 +400,35 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
 // =====================================================
 // 4. COMPONENT: DASHBOARD OVERVIEW (Tracker)
 // =====================================================
-export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplication, onViewJob }) => {
+export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplication, onViewJob, onSubmitEmployerFeedback }) => {
   const [withdrawModal, setWithdrawModal] = useState({ isOpen: false, appId: null });
   const [reason, setReason] = useState("");
+  const [feedbackDrafts, setFeedbackDrafts] = useState({});
+  const [feedbackSavingAppId, setFeedbackSavingAppId] = useState(null);
 
   const activeApps = applications.filter(a => a.status !== 'Cancelled');
   const withdrawnApps = applications.filter(a => a.status === 'Cancelled');
+
+  const getFeedbackDraft = (app) => {
+    if (feedbackDrafts[app.id]) {
+      return feedbackDrafts[app.id];
+    }
+
+    return {
+      rating: Number(app.feedbackRating || 0),
+      comment: app.feedbackComment || '',
+    };
+  };
+
+  const updateFeedbackDraft = (app, patch) => {
+    setFeedbackDrafts((prev) => ({
+      ...prev,
+      [app.id]: {
+        ...getFeedbackDraft(app),
+        ...patch,
+      },
+    }));
+  };
 
   const openWithdrawModal = (appId) => {
     setWithdrawModal({ isOpen: true, appId });
@@ -450,6 +473,49 @@ export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplic
     closeWithdrawModal();
   };
 
+  const handleSubmitFeedback = async (app) => {
+    if (typeof onSubmitEmployerFeedback !== 'function') {
+      return;
+    }
+
+    const draft = getFeedbackDraft(app);
+    if (!draft.rating) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Rating required',
+        text: 'Please select a star rating before submitting your feedback.',
+        toast: true,
+        position: 'top',
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true
+      });
+      return;
+    }
+
+    setFeedbackSavingAppId(app.id);
+
+    try {
+      const success = await onSubmitEmployerFeedback(app.id, draft.rating, draft.comment.trim());
+      if (!success) {
+        return;
+      }
+
+      Swal.fire({
+        icon: 'success',
+        title: app.feedbackRating ? 'Feedback updated' : 'Feedback submitted',
+        text: 'Your employer rating has been saved.',
+        toast: true,
+        position: 'top',
+        timer: 2200,
+        showConfirmButton: false,
+        timerProgressBar: true
+      });
+    } finally {
+      setFeedbackSavingAppId(null);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       <section>
@@ -469,6 +535,10 @@ export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplic
             activeApps.map(app => {
               const job = jobs.find(j => j.id === app.jobId);
               const canWithdraw = ['Pending', 'Viewing'].includes(app.status);
+              const canRateEmployer = ['Hired', 'Rejected'].includes(app.status);
+              const feedbackDraft = getFeedbackDraft(app);
+              const hasSubmittedFeedback = Number(app.feedbackRating || 0) > 0;
+
               return (
                 <div key={app.id} className="bg-white p-6 md:p-8 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all relative group">
                   <div className="flex justify-between items-start mb-2">
@@ -492,6 +562,73 @@ export const DashboardOverview = ({ applications = [], jobs = [], onCancelApplic
                   </div>
                   
                   <ApplicationProcessSteps status={app.status} />
+
+                  {canRateEmployer && (
+                    <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
+                        <div>
+                          <p className="text-sm font-black text-amber-900 uppercase tracking-wide">Employer Feedback</p>
+                          <p className="text-sm text-amber-800 mt-1">
+                            Rate your experience with {job?.company || 'this employer'} now that the application reached its final decision.
+                          </p>
+                        </div>
+                        {hasSubmittedFeedback && (
+                          <span className="inline-flex items-center rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-bold text-amber-800">
+                            Submitted
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap mb-4">
+                        {[1, 2, 3, 4, 5].map((value) => {
+                          const active = value <= Number(feedbackDraft.rating || 0);
+
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => updateFeedbackDraft(app, { rating: value })}
+                              className={`p-2 rounded-xl border transition-colors ${active ? 'border-amber-400 bg-white text-amber-500' : 'border-amber-200 bg-white text-gray-300 hover:text-amber-400 hover:border-amber-300'}`}
+                              aria-label={`Rate ${value} star${value > 1 ? 's' : ''}`}
+                            >
+                              <Star size={20} className={active ? 'fill-current' : ''} />
+                            </button>
+                          );
+                        })}
+                        <span className="text-sm font-semibold text-amber-900 ml-1">
+                          {feedbackDraft.rating ? `${feedbackDraft.rating}/5 stars` : 'Select a rating'}
+                        </span>
+                      </div>
+
+                      <textarea
+                        value={feedbackDraft.comment}
+                        onChange={(e) => updateFeedbackDraft(app, { comment: e.target.value })}
+                        className="w-full rounded-2xl border border-amber-200 bg-white p-4 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-amber-400"
+                        rows={4}
+                        placeholder="Share a short note about communication, interview handling, or overall hiring experience."
+                      />
+
+                      <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <p className="text-xs text-amber-900/80 font-medium">
+                          {app.feedbackSubmittedAt
+                            ? `Last updated: ${app.feedbackSubmittedAt}`
+                            : 'Your rating helps admin identify the top employers in the system.'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleSubmitFeedback(app)}
+                          disabled={feedbackSavingAppId === app.id || !feedbackDraft.rating}
+                          className="px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 disabled:bg-amber-300 transition-colors"
+                        >
+                          {feedbackSavingAppId === app.id
+                            ? 'Saving...'
+                            : hasSubmittedFeedback
+                            ? 'Update Feedback'
+                            : 'Submit Feedback'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center mt-4 pt-4 border-t border-gray-100 gap-4">
                     <span className="text-xs font-semibold text-gray-500 flex items-center gap-1">
@@ -753,7 +890,7 @@ const toastMsg = (title, icon = 'success') => {
   });
 };
 
-const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], initialTab, onCancelApplication, onViewJob, onNavigate, onUpdateProfile, onWithdrawTraining }) => {
+const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], initialTab, onCancelApplication, onViewJob, onNavigate, onUpdateProfile, onWithdrawTraining, onSubmitEmployerFeedback }) => {
   const [activeTab, setActiveTab] = useState(initialTab || 'overview');
   const [resumeFile, setResumeFile] = useState(null);
   const [idDocumentFile, setIdDocumentFile] = useState(null);
@@ -1181,7 +1318,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
           ))}
         </nav>
 
-        {activeTab === 'overview' && <DashboardOverview applications={applications} jobs={jobs} onCancelApplication={onCancelApplication} onViewJob={onViewJob} />}
+        {activeTab === 'overview' && <DashboardOverview applications={applications} jobs={jobs} onCancelApplication={onCancelApplication} onViewJob={onViewJob} onSubmitEmployerFeedback={onSubmitEmployerFeedback} />}
         {activeTab === 'trainings' && <MyTrainings trainings={trainings} profile={profile} onWithdrawTraining={handleWithdrawTraining} />}
         {activeTab === 'job fairs' && <MyJobFairs jobFairs={jobFairs} profile={profile} onWithdrawJobFair={handleWithdrawJobFair} />}
         

@@ -232,6 +232,7 @@ class FeatureController extends Controller
 
         $applications = DB::table('applications as a')
             ->join('jobs_catalog as j', 'j.id', '=', 'a.job_id')
+            ->leftJoin('application_feedback as af', 'af.application_id', '=', 'a.id')
             ->where('a.seeker_id', $seeker->id)
             ->orderByDesc('a.created_at')
             ->select([
@@ -246,6 +247,9 @@ class FeatureController extends Controller
                 'j.location',
                 'j.employment_type',
                 'j.educational_attainment_required',
+                'af.rating as feedback_rating',
+                'af.feedback_comment',
+                'af.submitted_at as feedback_submitted_at',
             ])
             ->get()
             ->map(function ($item) {
@@ -560,6 +564,221 @@ class FeatureController extends Controller
             'status' => 'success',
             'message' => $approved ? 'Employer approved.' : 'Employer rejected.',
             'employer' => $employer,
+        ]);
+    }
+
+    public function adminAnalytics()
+    {
+        $totalEmployers = DB::table('users')
+            ->where('role', 'Employer')
+            ->count();
+
+        $verifiedEmployers = DB::table('users')
+            ->where('role', 'Employer')
+            ->where('is_verified', true)
+            ->count();
+
+        $pendingEmployerReviews = DB::table('users')
+            ->where('role', 'Employer')
+            ->where('uploaded_docs', true)
+            ->where('is_verified', false)
+            ->count();
+
+        $pendingSeekerReviews = DB::table('users')
+            ->where('role', 'Seeker')
+            ->whereNotNull('seeker_id_doc_path')
+            ->whereIn('id_verification_status', ['manual_review', 'not_submitted'])
+            ->count();
+
+        $totalFeedback = DB::table('application_feedback')->count();
+        $averageRating = (float) (DB::table('application_feedback')->avg('rating') ?? 0);
+
+        $ratingCounts = DB::table('application_feedback')
+            ->select('rating', DB::raw('COUNT(*) as total'))
+            ->groupBy('rating')
+            ->pluck('total', 'rating');
+
+        $ratingBreakdown = collect(range(5, 1))
+            ->map(function (int $rating) use ($ratingCounts) {
+                return [
+                    'rating' => $rating,
+                    'total' => (int) ($ratingCounts[$rating] ?? 0),
+                ];
+            })
+            ->values();
+
+        $statusCounts = DB::table('applications')
+            ->select('status', DB::raw('COUNT(*) as total'))
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $decisionBreakdown = collect(['Pending', 'Viewing', 'Interview', 'Hired', 'Rejected', 'Withdrawn'])
+            ->map(function (string $status) use ($statusCounts) {
+                return [
+                    'status' => $status,
+                    'total' => (int) ($statusCounts[$status] ?? 0),
+                ];
+            })
+            ->values();
+
+        $topEmployers = DB::table('users as u')
+            ->leftJoin('jobs_catalog as j', 'j.employer_id', '=', 'u.id')
+            ->leftJoin('applications as a', 'a.job_id', '=', 'j.id')
+            ->leftJoin('application_feedback as af', 'af.application_id', '=', 'a.id')
+            ->where('u.role', 'Employer')
+            ->groupBy('u.id', 'u.name', 'u.company_name', 'u.email', 'u.is_verified')
+            ->select([
+                'u.id',
+                'u.name',
+                'u.company_name',
+                'u.email',
+                'u.is_verified',
+                DB::raw('COUNT(DISTINCT j.id) as total_jobs'),
+                DB::raw('COUNT(DISTINCT a.id) as total_applications'),
+                DB::raw("SUM(CASE WHEN a.status = 'Hired' THEN 1 ELSE 0 END) as hired_count"),
+                DB::raw("SUM(CASE WHEN a.status = 'Interview' THEN 1 ELSE 0 END) as interview_count"),
+                DB::raw('COUNT(DISTINCT af.id) as feedback_count'),
+                DB::raw('COALESCE(ROUND(AVG(af.rating), 2), 0) as average_rating'),
+            ])
+            ->orderByDesc('hired_count')
+            ->orderByDesc('average_rating')
+            ->orderByDesc('total_applications')
+            ->limit(10)
+            ->get()
+            ->map(function ($item) {
+                $totalApplications = (int) ($item->total_applications ?? 0);
+                $hiredCount = (int) ($item->hired_count ?? 0);
+
+                $item->employer_label = trim((string) ($item->company_name ?: $item->name ?: $item->email ?: 'Unknown employer'));
+                $item->total_jobs = (int) ($item->total_jobs ?? 0);
+                $item->total_applications = $totalApplications;
+                $item->hired_count = $hiredCount;
+                $item->interview_count = (int) ($item->interview_count ?? 0);
+                $item->feedback_count = (int) ($item->feedback_count ?? 0);
+                $item->average_rating = (float) ($item->average_rating ?? 0);
+                $item->conversion_rate = $totalApplications > 0
+                    ? round(($hiredCount / $totalApplications) * 100, 1)
+                    : 0;
+
+                return $item;
+            })
+            ->values();
+
+        return response()->json([
+            'status' => 'success',
+            'analytics' => [
+                'summary' => [
+                    'total_employers' => $totalEmployers,
+                    'verified_employers' => $verifiedEmployers,
+                    'pending_employer_reviews' => $pendingEmployerReviews,
+                    'pending_seeker_reviews' => $pendingSeekerReviews,
+                    'total_feedback' => $totalFeedback,
+                    'average_rating' => round($averageRating, 2),
+                ],
+                'rating_breakdown' => $ratingBreakdown,
+                'decision_breakdown' => $decisionBreakdown,
+                'top_employers' => $topEmployers,
+            ],
+        ]);
+    }
+
+    public function adminSeekers()
+    {
+        $seekers = DB::table('users')
+            ->where('role', 'Seeker')
+            ->whereNotNull('seeker_id_doc_path')
+            ->orderByRaw("CASE
+                WHEN id_verification_status = 'manual_review' THEN 0
+                WHEN id_verification_status = 'not_submitted' THEN 1
+                WHEN id_verification_status = 'rejected' THEN 2
+                WHEN id_verification_status = 'verified' THEN 3
+                ELSE 4
+            END")
+            ->orderByDesc('updated_at')
+            ->select([
+                'id',
+                'name',
+                'email',
+                'qc_id',
+                'uploaded_docs',
+                'seeker_id_doc_path',
+                'seeker_id_doc_original_name',
+                'seeker_id_doc_stored_name',
+                'id_verification_status',
+                'id_verification_reason',
+                'id_verification_checked_at',
+                'id_extracted_name',
+                'id_extracted_birthdate',
+                'id_extracted_gender',
+                'id_birthdate_matches_profile',
+                'id_gender_matches_profile',
+                'is_priority_verified',
+                'created_at',
+                'updated_at',
+            ])
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'seekers' => $seekers,
+        ]);
+    }
+
+    public function reviewSeekerId(Request $request)
+    {
+        $request->validate([
+            'seeker_id' => ['required', 'integer', 'exists:users,id'],
+            'approved' => ['required', 'boolean'],
+            'reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $seeker = User::find($request->seeker_id);
+        if (!$seeker || ($seeker->role ?? '') !== 'Seeker') {
+            return response()->json(['status' => 'error', 'message' => 'Seeker not found.'], 404);
+        }
+
+        if (empty($seeker->seeker_id_doc_path)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This seeker has no uploaded ID document to review.',
+            ], 422);
+        }
+
+        $approved = (bool) $request->approved;
+        $reason = trim((string) ($request->reason ?? ''));
+
+        if (!$approved && $reason === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'A reason is required when marking a seeker as unverified.',
+            ], 422);
+        }
+
+        $seeker->id_verification_status = $approved ? 'verified' : 'rejected';
+        $seeker->id_verification_reason = $approved ? null : $reason;
+        $seeker->id_verification_provider = 'admin_manual_review';
+        $seeker->id_verification_checked_at = now();
+        $seeker->is_priority_verified = $approved;
+        $seeker->save();
+
+        DB::table('notifications')->insert([
+            'to_user_id' => $seeker->id,
+            'content' => $approved
+                ? 'Your QC ID has been verified by the admin team.'
+                : 'Your QC ID could not be verified: ' . $reason,
+            'meta' => json_encode([
+                'type' => 'seeker_id_review',
+                'approved' => $approved,
+                'reason' => $approved ? null : $reason,
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $approved ? 'Seeker ID verified.' : 'Seeker ID marked as unverified.',
+            'seeker' => $seeker->fresh(),
         ]);
     }
 
@@ -1043,6 +1262,105 @@ class FeatureController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Application status updated.',
+        ]);
+    }
+
+    public function submitEmployerFeedback(Request $request)
+    {
+        $request->validate([
+            'email' => ['required', 'email'],
+            'application_id' => ['required', 'integer', 'exists:applications,id'],
+            'rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'feedback_comment' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $seeker = User::where('email', $request->email)->first();
+        if (!$seeker || ($seeker->role ?? '') !== 'Seeker') {
+            return response()->json(['status' => 'error', 'message' => 'Seeker not found.'], 404);
+        }
+
+        $application = DB::table('applications as a')
+            ->join('jobs_catalog as j', 'j.id', '=', 'a.job_id')
+            ->where('a.id', $request->application_id)
+            ->where('a.seeker_id', $seeker->id)
+            ->select([
+                'a.id',
+                'a.status',
+                'a.job_id',
+                'j.employer_id',
+                'j.title as job_title',
+                'j.company as company_name',
+            ])
+            ->first();
+
+        if (!$application) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Application not found for this seeker.',
+            ], 404);
+        }
+
+        if (!in_array((string) $application->status, ['Hired', 'Rejected'], true)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Feedback can only be submitted after the final application decision.',
+            ], 422);
+        }
+
+        $comment = trim((string) ($request->feedback_comment ?? ''));
+        $existingFeedback = DB::table('application_feedback')
+            ->where('application_id', $application->id)
+            ->first();
+
+        $payload = [
+            'job_id' => $application->job_id,
+            'employer_id' => $application->employer_id,
+            'seeker_id' => $seeker->id,
+            'rating' => (int) $request->rating,
+            'feedback_comment' => $comment !== '' ? $comment : null,
+            'submitted_at' => now(),
+            'updated_at' => now(),
+        ];
+
+        if ($existingFeedback) {
+            DB::table('application_feedback')
+                ->where('application_id', $application->id)
+                ->update($payload);
+        } else {
+            DB::table('application_feedback')->insert([
+                'application_id' => $application->id,
+                'created_at' => now(),
+                ...$payload,
+            ]);
+        }
+
+        $preview = $comment !== ''
+            ? (mb_strlen($comment) > 120 ? mb_substr($comment, 0, 117) . '...' : $comment)
+            : null;
+
+        DB::table('notifications')->insert([
+            'to_user_id' => $application->employer_id,
+            'content' => $preview
+                ? "A seeker rated your hiring process {$request->rating}/5 for {$application->job_title}: {$preview}"
+                : "A seeker rated your hiring process {$request->rating}/5 for {$application->job_title}.",
+            'meta' => json_encode([
+                'type' => 'employer_feedback',
+                'application_id' => $application->id,
+                'job_id' => $application->job_id,
+                'rating' => (int) $request->rating,
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $feedback = DB::table('application_feedback')
+            ->where('application_id', $application->id)
+            ->first();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $existingFeedback ? 'Feedback updated successfully.' : 'Feedback submitted successfully.',
+            'feedback' => $feedback,
         ]);
     }
 

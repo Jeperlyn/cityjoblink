@@ -102,7 +102,9 @@ class AuthController extends Controller
                 'seeker_id_doc_path' => $pendingSeekerIdDocument['path'] ?? null,
                 'seeker_id_doc_original_name' => $pendingSeekerIdDocument['original_name'] ?? null,
                 'seeker_id_doc_stored_name' => $pendingSeekerIdDocument['stored_name'] ?? null,
-                'id_verification_status' => 'not_submitted',
+                'id_verification_status' => $role === 'Seeker' && $pendingSeekerIdDocument
+                    ? 'manual_review'
+                    : 'not_submitted',
                 'is_priority_verified' => false,
             ], now()->addMinutes(10));
 
@@ -351,7 +353,7 @@ class AuthController extends Controller
                 'seeker_id_doc_original_name' => $pendingRegistration['seeker_id_doc_original_name'] ?? null,
                 'seeker_id_doc_stored_name' => $pendingRegistration['seeker_id_doc_stored_name'] ?? null,
                 'id_verification_status' => $isSeekerRole && $hasSeekerIdDocument
-                    ? 'not_submitted'
+                    ? 'manual_review'
                     : 'not_submitted',
                 'is_priority_verified' => false,
             ]);
@@ -574,7 +576,7 @@ class AuthController extends Controller
             $user->seeker_id_doc_path = $storedDocument['path'];
             $user->seeker_id_doc_original_name = $storedDocument['original_name'];
             $user->seeker_id_doc_stored_name = $storedDocument['stored_name'];
-            $user->id_verification_status = 'not_submitted';
+            $user->id_verification_status = 'manual_review';
             $user->id_verification_reason = null;
             $user->id_verification_confidence = null;
             $user->id_verification_provider = null;
