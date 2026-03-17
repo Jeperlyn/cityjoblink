@@ -160,7 +160,6 @@ const EmployerLinks = ({ job, compact = false, containerClassName = '' }) => {
 export const JobDetailsPage = ({ job, matchData, onBack }) => {
   if (!job) return <div className="p-20 text-center font-bold text-gray-500">Job data not found.</div>;
   
-  // Defensive check for matchData
   const matches = matchData?.matches || [];
   const score = matchData?.score || 0;
   const missingSkills = (job.requiredSkills || []).filter(skill => !matches.includes(skill));
@@ -218,12 +217,17 @@ export const JobDetailsPage = ({ job, matchData, onBack }) => {
 // =====================================================
 // 3. COMPONENT: FIND JOBS (The Job Listings)
 // =====================================================
-export const FindJobs = ({ jobs = [], recommendations = [], onApply, applications = [], userId }) => {
+// ✅ Added onGoToProfile prop so the parent component can redirect the user
+export const FindJobs = ({ jobs = [], recommendations = [], onApply, applications = [], userId, profile, onGoToProfile }) => {
   const [keyword, setKeyword] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
   const [selectedType, setSelectedType] = useState('');
   const [expandedId, setExpandedId] = useState(null);
   
+  const idVerificationStatus = profile?.idVerificationStatus || profile?.id_verification_status;
+  const isVerified = !profile || idVerificationStatus === 'verified';
+  const hasResume = profile?.resume_path || profile?.resumePath || (profile?.educational_attainment && profile?.educational_attainment !== 'Not Specified');
+
   const locations = [...new Set(jobs.map(j => j.location).filter(Boolean))].sort();
   const types = [...new Set(jobs.map(j => j.type).filter(Boolean))].sort();
   
@@ -285,6 +289,24 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
 
               const alreadyApplied = applications.some(a => a.jobId === recJob.id && a.seekerId === userId);
 
+              // ✅ NEW BUTTON LOGIC: Changes Action and Styling instead of Disabling
+              let btnText = 'Apply for this Position';
+              let btnTitle = '';
+              let btnAction = () => onApply(recJob.id);
+              let btnClass = 'text-white bg-blue-600 hover:bg-blue-700';
+              
+              if (!isVerified) {
+                  btnText = 'Verification Required';
+                  btnTitle = 'Click to verify your ID in your profile';
+                  btnAction = () => { if (onGoToProfile) onGoToProfile(); };
+                  btnClass = 'text-gray-700 bg-gray-200 hover:bg-gray-300';
+              } else if (!hasResume) {
+                  btnText = 'Upload Resume First';
+                  btnTitle = 'Click to upload your resume in your profile';
+                  btnAction = () => { if (onGoToProfile) onGoToProfile(); };
+                  btnClass = 'text-gray-700 bg-gray-200 hover:bg-gray-300';
+              }
+
               return (
                 <div key={`${recJob.id}-${index}`} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all">
                   <div className="flex justify-between items-start gap-4 mb-3">
@@ -310,10 +332,11 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
 
                   {!alreadyApplied ? (
                     <button
-                      onClick={() => onApply(recJob.id)}
-                      className="w-full md:w-auto px-5 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                      onClick={(e) => { e.stopPropagation(); btnAction(); }}
+                      className={`w-full md:w-auto px-5 py-2.5 text-sm font-bold rounded-lg transition-colors ${btnClass}`}
+                      title={btnTitle}
                     >
-                      Apply for this Position
+                      {btnText}
                     </button>
                   ) : (
                     <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-lg text-sm font-bold border border-green-200">
@@ -331,6 +354,25 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
         {filtered.map(job => {
           const isExp = expandedId === job.id;
           const hasApp = applications.some(a => a.jobId === job.id && a.seekerId === userId);
+
+          // ✅ NEW BUTTON LOGIC
+          let btnText = 'Apply for this Position';
+          let btnTitle = '';
+          let btnAction = () => onApply(job.id);
+          let btnClass = 'text-white bg-blue-600 hover:bg-blue-700';
+          
+          if (!isVerified) {
+              btnText = 'Verification Required';
+              btnTitle = 'Click to verify your ID in your profile';
+              btnAction = () => { if (onGoToProfile) onGoToProfile(); };
+              btnClass = 'text-gray-700 bg-gray-200 hover:bg-gray-300';
+          } else if (!hasResume) {
+              btnText = 'Upload Resume First';
+              btnTitle = 'Click to upload your resume in your profile';
+              btnAction = () => { if (onGoToProfile) onGoToProfile(); };
+              btnClass = 'text-gray-700 bg-gray-200 hover:bg-gray-300';
+          }
+
           return (
             <div key={job.id} className={`bg-white rounded-2xl border transition-all duration-200 ${isExp ? 'border-blue-300 shadow-lg' : 'border-gray-200 shadow-sm hover:border-blue-200 hover:shadow-md'}`}>
               <div className="p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer" onClick={() => setExpandedId(isExp ? null : job.id)}>
@@ -379,8 +421,12 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
                   <EmployerLinks job={job} compact containerClassName="mb-8" />
 
                   {!hasApp ? (
-                    <button onClick={(e) => { e.stopPropagation(); onApply(job.id); }} className="w-full md:w-auto px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-sm">
-                      Apply for this Position
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); btnAction(); }} 
+                      className={`w-full md:w-auto px-8 py-3 rounded-xl font-bold transition-colors shadow-sm ${btnClass}`}
+                      title={btnTitle}
+                    >
+                      {btnText}
                     </button>
                   ) : (
                     <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-xl font-bold border border-green-200">
@@ -1277,6 +1323,14 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
     }
   };
 
+  // ✅ NEW HELPER: Handles internal redirect when "Upload Resume First" is clicked inside the FindJobs tab
+  const handleRedirectToProfile = () => {
+    setActiveTab('profile');
+    setTimeout(() => {
+      document.getElementById('resume-section')?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50/50 pb-20 pt-8">
       <div className="max-w-6xl mx-auto p-4 md:p-6">
@@ -1353,7 +1407,6 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                   <p className="text-sm font-medium text-gray-900">{profile?.educational_attainment || "Not Specified"}</p>
                 </div>
 
-                {/* MODIFIED: Separated ID Type and ID Number */}
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">ID Type</p>
                   <p className="text-sm font-medium text-gray-900">{profile?.id_type || "Gov ID"}</p>
@@ -1429,7 +1482,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
               </div>
               
               {/* Resume Tools Grid */}
-              <h4 className="text-lg font-bold text-gray-900 mb-6">Resume & Documents</h4>
+              <h4 id="resume-section" className="text-lg font-bold text-gray-900 mb-6">Resume & Documents</h4>
               <div className="grid md:grid-cols-2 gap-5">
                 
                 {/* Resume Builder */}
@@ -1616,4 +1669,3 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
 };
 
 export default SeekerDashboard;
-

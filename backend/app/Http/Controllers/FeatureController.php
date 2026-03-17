@@ -82,6 +82,28 @@ class FeatureController extends Controller
             return response()->json(['status' => 'error', 'message' => 'User not found.'], 404);
         }
 
+        // ✅ FEATURE: Prevent unverified seekers from applying
+        if ($seeker->id_verification_status !== 'verified') {
+            $statusMessage = match ($seeker->id_verification_status) {
+                'manual_review' => 'Your account is currently under review by an Admin. You cannot apply for jobs until your ID is verified.',
+                'rejected'      => 'Your ID verification was rejected. Please upload a valid ID to apply for jobs.',
+                default         => 'You must verify your identity by uploading a valid ID before applying for jobs.',
+            };
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $statusMessage,
+            ], 403);
+        }
+
+        // ✅ NEW FEATURE: Prevent application if resume/education is missing
+        if (empty($seeker->resume_path) || empty($seeker->educational_attainment) || $seeker->educational_attainment === 'Not Specified') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Please upload your resume in your Profile to set your educational attainment before applying.',
+            ], 403);
+        }
+
         $existing = DB::table('applications')
             ->where('job_id', $request->job_id)
             ->where('seeker_id', $seeker->id)
@@ -430,7 +452,6 @@ class FeatureController extends Controller
         }
     }
 
-    // ✅ BAGONG DAGDAG: UPDATE JOB FUNCTION
     public function updateJob(Request $request, $id)
     {
         $request->validate([
@@ -457,7 +478,6 @@ class FeatureController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Job not found.'], 404);
         }
 
-        // Security check: Siguraduhing ang may-ari ng job ang nag-uupdate
         if ((int) $job->employer_id !== (int) $employer->id) {
             return response()->json(['status' => 'error', 'message' => 'Unauthorized to update this job.'], 403);
         }
@@ -487,7 +507,6 @@ class FeatureController extends Controller
         ]);
     }
 
-    // ✅ BAGONG DAGDAG: DELETE JOB FUNCTION
     public function deleteJob(Request $request, $id)
     {
         $request->validate([
@@ -1296,7 +1315,7 @@ class FeatureController extends Controller
         if (!$application) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Application not found for this seeker.',
+                'message' => 'Application found for this seeker.',
             ], 404);
         }
 
@@ -1604,7 +1623,8 @@ class FeatureController extends Controller
         $map = [
             'doctorate' => ['doctorate', 'doctoral', 'phd', 'doctor of philosophy'],
             'masters' => ['master', 'masters', "master's", 'm.s', 'ms', 'm.a', 'ma', 'mba'],
-            'bachelors' => ['bachelor', 'bachelors', "bachelor's", 'b.s', 'bs', 'b.a', 'ba', 'college graduate', 'college grad', 'degree'],
+            // Removed 'degree' because 'associate degree' contains 'degree' and was getting ranked as a Bachelor's
+            'bachelors' => ['bachelor', 'bachelors', "bachelor's", 'b.s', 'bs', 'b.a', 'ba', 'college graduate', 'college grad'],
             'associate' => ['associate degree', 'associate'],
             'vocational' => ['vocational', 'tesda', 'certificate', 'technical-vocational', 'nc ii', 'nc iii'],
             'highschool' => ['high school', 'secondary', 'senior high', 'shs'],
@@ -1612,7 +1632,9 @@ class FeatureController extends Controller
 
         foreach ($map as $level => $keywords) {
             foreach ($keywords as $keyword) {
-                if (str_contains($normalized, $keyword)) {
+                // Using regex with word boundaries (\b) prevents substrings from triggering false matches
+                // e.g., "ma" inside "diploma" will no longer falsely match "Master's"
+                if (preg_match('/\b' . preg_quote($keyword, '/') . '\b/u', $normalized)) {
                     return $level;
                 }
             }

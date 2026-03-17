@@ -1230,6 +1230,7 @@ const App = () => {
         if (!user || currentView === 'login') return <LoginScreen onLogin={handleLogin} loginError={loginError} setLoginError={setLoginError} />;
 
         // 3. PROTECTED VIEWS
+        // ✅ NEW: Added initialTab prop so it opens the right section when redirected
         if (currentView === 'seeker-dash') return (
             <SeekerDashboard 
                 profile={user} 
@@ -1237,6 +1238,7 @@ const App = () => {
                 jobs={jobs || []} 
                 trainings={trainings || []}
                 jobFairs={jobFairs || []}
+                initialTab={seekerActiveTab} 
                 onNavigate={setCurrentView}
                 onViewJob={(j) => handleViewJobDetails(j, 'seeker-dash')}
                 onCancelApplication={handleCancelApplication}
@@ -1250,11 +1252,13 @@ const App = () => {
             />
         );
 
-        // ✅ FIXED: Passed handleUpdateJob to EmployerDashboard
         if (currentView === 'employer-dash') return <EmployerDashboard profile={user} jobs={jobs} applications={applications} seekers={employerSeekers} onPostJob={handlePostJob} onUpdateJob={handleUpdateJob} onUpdateStatus={handleUpdateAppStatus} onUpdateProfile={(u)=>setUser(normalizeUserProfile(u))} onUploadDocs={handleUploadEmployerDocs} onOpenChat={(id)=>{setTargetChatId(id); setCurrentView('messages');}} />;
         
         if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} seekers={adminSeekers} analytics={adminAnalytics} onVerifyEmployer={handleVerifyEmployer} onReviewSeeker={handleReviewSeekerId} jobFairs={jobFairs} onAddJobFair={()=>{}} />;
-        if (currentView === 'matchmaker') return <FindJobs jobs={jobs} recommendations={seekerRecommendations || []} onApply={handleApply} applications={applications} userId={user.id} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} />;
+        
+        // ✅ NEW: Passed profile and onGoToProfile to FindJobs so it can trigger the redirect
+        if (currentView === 'matchmaker') return <FindJobs jobs={jobs} recommendations={seekerRecommendations || []} onApply={handleApply} applications={applications} userId={user.id} profile={user} onGoToProfile={() => { setSeekerActiveTab('profile'); setCurrentView('seeker-dash'); setTimeout(() => { document.getElementById('resume-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} />;
+        
         if (currentView === 'job-details') {
             const matchInfo = selectedJobMatchData || calculateMatchScore(selectedJob?.requiredSkills || [], user?.skills || []);
             return (
@@ -1299,4 +1303,3 @@ const App = () => {
 };
 
 export default App;
-
