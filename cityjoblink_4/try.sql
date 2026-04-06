@@ -1,0 +1,1 @@
+SELECT id, title FROM jobs_catalog LIMIT 1;

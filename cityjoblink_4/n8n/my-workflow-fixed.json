@@ -1,0 +1,241 @@
+{
+  "name": "My workflow (fixed)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "job-match-trigger",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        0
+      ],
+      "id": "b593f0f2-4419-4a47-b21e-6fc3077a1a14",
+      "name": "Webhook1",
+      "webhookId": "aaecb424-eaf2-4088-b118-b90cf4016dd4"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, email, parsed_skill, resume_text, educational_attainment\nFROM users\nWHERE role = 'Seeker'\n  AND resume_text IS NOT NULL\n  AND LENGTH(TRIM(resume_text)) > 10;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        464,
+        0
+      ],
+      "id": "ce6f971a-f76f-4504-84e2-f09107dd615d",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "3t9IN3420wnFrcDg",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const webhookItem = $('Webhook1').first()?.json ?? {};\nconst job = webhookItem.body ?? webhookItem;\nconst event = String(job?.event || '').toLowerCase();\n\nif (event !== 'job_created') {\n  return [];\n}\n\nif (!job || !job.job_id) {\n  throw new Error(`Missing job_id from webhook payload. Keys: ${Object.keys(job || {}).join(', ')}`);\n}\n\nconst jobId = Number(job.job_id);\nconst jobTitle = String(job.title || '').toLowerCase();\nconst jobTitleRaw = String(job.title || 'this job');\nconst requiredEducationRaw = String(job.educational_attainment_required || '').trim();\n\nconst normalizeText = (value) => String(value || '').toLowerCase().trim();\nconst normalizeNoSymbols = (value) => normalizeText(value).replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();\n\nconst educationLevels = [\n  { level: 'doctorate', rank: 5, keywords: ['doctorate', 'doctoral', 'phd', 'doctor of philosophy'] },\n  { level: 'masters', rank: 4, keywords: ['master', 'masters', \"master's\", 'm.s', 'ms', 'm.a', 'ma', 'mba'] },\n  { level: 'bachelors', rank: 3, keywords: ['bachelor', 'bachelors', \"bachelor's\", 'b.s', 'bs', 'b.a', 'ba', 'college graduate', 'college grad', 'degree'] },\n  { level: 'associate', rank: 2, keywords: ['associate degree', 'associate'] },\n  { level: 'vocational', rank: 2, keywords: ['vocational', 'tesda', 'certificate', 'technical-vocational', 'nc ii', 'nc iii'] },\n  { level: 'highschool', rank: 1, keywords: ['high school', 'secondary', 'senior high', 'shs'] },\n];\n\nconst inferEducationLevel = (value) => {\n  const normalized = normalizeNoSymbols(value);\n  if (!normalized || ['any', 'not specified', 'none', 'n a', 'na'].includes(normalized)) {\n    return null;\n  }\n\n  for (const item of educationLevels) {\n    if (item.keywords.some((keyword) => normalized.includes(normalizeNoSymbols(keyword)))) {\n      return item.level;\n    }\n  }\n\n  return null;\n};\n\nconst levelRank = (level) => {\n  const found = educationLevels.find((item) => item.level === level);\n  return found ? found.rank : null;\n};\n\nconst isEducationRequired = (() => {\n  const normalized = normalizeText(requiredEducationRaw);\n  return normalized !== '' && !['any', 'not specified', 'none', 'n/a', 'na'].includes(normalized);\n})();\n\nconst requiredEducationLevel = inferEducationLevel(requiredEducationRaw);\n\nlet reqSkillsRaw = job.skills_required ?? job.required_skills ?? [];\nif (typeof reqSkillsRaw === 'string') {\n  try {\n    reqSkillsRaw = JSON.parse(reqSkillsRaw);\n  } catch {\n    reqSkillsRaw = [reqSkillsRaw];\n  }\n}\nif (!Array.isArray(reqSkillsRaw) && typeof reqSkillsRaw === 'object' && reqSkillsRaw !== null) {\n  reqSkillsRaw = Object.values(reqSkillsRaw);\n}\nconst reqSkills = reqSkillsRaw\n  .map((s) => String(s).toLowerCase().trim())\n  .filter(Boolean);\nconst requiredSkillsText = reqSkills.length > 0 ? reqSkills.join(', ') : 'Not specified';\n\nconst candidates = $input.all().map((item) => item.json);\nconst matchedCandidates = [];\n\nfor (const candidate of candidates) {\n  const resume = String(candidate.resume_text || '').toLowerCase();\n  const candidateEducationRaw = String(candidate.educational_attainment || '').trim();\n  let candidateEducationLevel = inferEducationLevel(candidateEducationRaw);\n  if (!candidateEducationLevel) {\n    candidateEducationLevel = inferEducationLevel(resume);\n  }\n\n  if (isEducationRequired) {\n    let educationQualified = false;\n\n    if (requiredEducationLevel && candidateEducationLevel) {\n      educationQualified = Number(levelRank(candidateEducationLevel) || 0) >= Number(levelRank(requiredEducationLevel) || 0);\n    } else {\n      const requiredNormalized = normalizeNoSymbols(requiredEducationRaw);\n      const candidateNormalized = normalizeNoSymbols(candidateEducationRaw);\n      educationQualified = candidateNormalized !== '' && (\n        candidateNormalized === requiredNormalized ||\n        candidateNormalized.includes(requiredNormalized)\n      );\n    }\n\n    if (!educationQualified) {\n      const seekerEducationLabel = candidateEducationRaw || 'Not specified';\n      const reason = `Auto-disqualified: requires ${requiredEducationRaw}, applicant has ${seekerEducationLabel}.`;\n      const seekerName = String(candidate.name || 'Jobseeker');\n\n      matchedCandidates.push({\n        job_id: jobId,\n        user_id: candidate.id,\n        name: seekerName,\n        email: candidate.email,\n        matchScore: 0,\n        inferred_edu: candidateEducationLevel || 'unknown',\n        disqualified: true,\n        reason,\n        email_subject: `Not Qualified for ${jobTitleRaw}`,\n        email_body: `Hi ${seekerName},<br/><br/>You are not qualified for <b>${jobTitleRaw}</b> because the job requires <b>${requiredEducationRaw}</b> and your profile currently shows <b>${seekerEducationLabel}</b>.<br/><br/>Please apply to jobs that match your educational attainment.<br/><br/>Best regards,<br/>CityJobLink Team`,\n      });\n\n      continue;\n    }\n  }\n\n  if (resume.length < 5) {\n    continue;\n  }\n\n  let score = 0;\n  const matchedDetails = [];\n\n  if (candidateEducationLevel) {\n    matchedDetails.push(`Education level: ${candidateEducationLevel}`);\n  }\n\n  const alignmentKeywords = jobTitle.split(/\\s+/).filter((word) => word.length > 3);\n  if (alignmentKeywords.some((word) => resume.includes(word))) {\n    score += 30;\n    matchedDetails.push(`Field aligned with Job Title: \"${jobTitle}\"`);\n  }\n\n  let skillCount = 0;\n  for (const skill of reqSkills) {\n    if (resume.includes(skill)) {\n      skillCount++;\n    }\n  }\n\n  const skillScore = reqSkills.length > 0 ? (skillCount / reqSkills.length) * 70 : 0;\n  score += skillScore;\n  if (skillCount > 0) {\n    matchedDetails.push(`${skillCount} skills found in resume text`);\n  }\n\n  const matchScore = Math.round(Math.min(score, 100));\n  const seekerName = String(candidate.name || 'Jobseeker');\n\n  matchedCandidates.push({\n    job_id: jobId,\n    user_id: candidate.id,\n    name: seekerName,\n    email: candidate.email,\n    matchScore,\n    inferred_edu: candidateEducationLevel || 'unknown',\n    disqualified: false,\n    reason: matchedDetails.length > 0 ? matchedDetails.join(' | ') : 'No direct matches found',\n    email_subject: `${matchScore}% Match! New Job Alert: ${jobTitleRaw}`,\n    email_body: `Hi ${seekerName},<br/><br/>Great news! Our matching engine found a new job that fits your profile.<br/><br/><b>Match Score:</b> ${matchScore}%<br/><b>Required Skills:</b> ${requiredSkillsText}<br/><b>Match Reason:</b> ${matchedDetails.length > 0 ? matchedDetails.join(' | ') : 'General profile fit'}<br/><br/>Log in to CityJobLink to apply now!<br/><br/>Best regards,<br/>CityJobLink Team`,\n  });\n}\n\nmatchedCandidates.sort((a, b) => Number(b.matchScore) - Number(a.matchScore));\n\nreturn matchedCandidates.map((match) => ({ json: match }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ],
+      "id": "8ce873ee-ab87-4550-97aa-0b442f737276",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "job_matches",
+          "mode": "list",
+          "cachedResultName": "job_matches"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "job_id": "={{ $json.job_id }}",
+            "user_id": "={{ $json.user_id }}",
+            "match_score": "={{ Number($json.matchScore) }}",
+            "match_reasons": "={{ $json.reason }}"
+          },
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_id",
+              "displayName": "user_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "match_score",
+              "displayName": "match_score",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "match_reasons",
+              "displayName": "match_reasons",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": true,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        848,
+        0
+      ],
+      "id": "41fb71e5-ff72-4e7c-98f1-30cbf8256aa4",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "3t9IN3420wnFrcDg",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().filter((item) => Number(item?.json?.matchScore ?? 0) >= 50);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        160
+      ],
+      "id": "5d6eb81b-3a5e-4cf3-bdc3-2d315b86d1e4",
+      "name": "Filter Email 50+"
+    },
+    {
+      "parameters": {
+        "fromEmail": "cityjoblink.direct@gmail.com",
+        "toEmail": "={{ $json.email }}",
+        "subject": "={{ Number($json.matchScore ?? 0) + '% Match: ' + String(($('Webhook1').first()?.json?.body?.title || $('Webhook1').first()?.json?.title || 'Job Opportunity')) + ' | New Job Alert' }}",
+        "emailFormat": "html",
+        "html": "={{ (() => { const webhook = $('Webhook1').first()?.json ?? {}; const job = webhook.body ?? webhook; const jobTitle = String(job.title || 'Job Opportunity'); const seekerName = String($json.name || 'Jobseeker'); const matchScore = Number($json.matchScore ?? 0); const reason = String($json.reason || '').trim(); const inferredEduRaw = String($json.inferred_edu || '').trim(); const degreeLevel = inferredEduRaw && inferredEduRaw !== 'unknown' ? inferredEduRaw.charAt(0).toUpperCase() + inferredEduRaw.slice(1) : 'Not specified'; const skillCountMatch = reason.match(/(\\d+)\\s+skills?/i); const skillCount = skillCountMatch ? skillCountMatch[1] : '0'; const matchedSkills = reason || (skillCount !== '0' ? `${skillCount} matching skills` : 'Not specified'); const applyUrl = 'http://172.20.10.3:5173/?jobId=' + encodeURIComponent(String($json.job_id || '')); return `Hi ${seekerName},<br/><br/>A new job opening has been posted that matches your profile.<br/><br/><b>Match Details</b><br/>Position: ${jobTitle}<br/><br/>Match Score: ${matchScore}%<br/><br/>Matched Skills: ${matchedSkills}<br/><br/><b>Match Logic:</b><br/>Based on your ${degreeLevel} and ${skillCount} matching skills found in your resume.<br/><br/><b>Action Required:</b><br/>Review the full job description and apply via the link below:<br/><br/><a href='${applyUrl}' style='display:inline-block;padding:10px 16px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;'>Apply on CityJobLink</a><br/><br/>CityJobLink Team`; })() }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1024,
+        0
+      ],
+      "id": "3e5d1a3d-e212-44dd-b192-5694908970f4",
+      "name": "Send an Email1",
+      "webhookId": "b126b57f-fecd-413a-8c37-b72e0ad676b8",
+      "credentials": {
+        "smtp": {
+          "id": "fJ6zTRRaEJz5Zvw9",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter Email 50+",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Email 50+": {
+      "main": [
+        [
+          {
+            "node": "Send an Email1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "b3969b37-a6b1-42a5-b4e2-72ddb59447fd",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bcd4ce5fef147b65df65cc8fc18b3cf99277931b957b0f395c6d78ca60dc76aa"
+  },
+  "tags": []
+}
