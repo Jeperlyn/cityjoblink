@@ -16,6 +16,10 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $this->call([
+            SkillCatalogSeeder::class,
+        ]);
+
         User::updateOrCreate([
             'email' => 'admin@peso.gov.ph',
         ], [

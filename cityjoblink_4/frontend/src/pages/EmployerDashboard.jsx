@@ -100,7 +100,12 @@ const getMatchTextColorClass = (score) => {
 const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, onUpdateJob, onUpdateProfile, onUploadDocs, onOpenChat, onUpdateStatus }) => {
     const [activeTab, setActiveTab] = useState('overview');
 
-    const [newJob, setNewJob] = useState({ title: '', salaryMin: '', salaryMax: '', location: '', type: 'Full-time', requiredSkills: '', educationalAttainmentRequired: '', description: '' });
+    const [newJob, setNewJob] = useState({ title: '', salaryMin: '', salaryMax: '', location: '', type: 'Full-time', requiredSkills: [], educationalAttainmentRequired: '', description: '' });
+    const [skillCategories, setSkillCategories] = useState([]);
+    const [activeSkillCatalogTab, setActiveSkillCatalogTab] = useState('managerial');
+    const [selectedSkillIds, setSelectedSkillIds] = useState([]);
+    const [unmatchedEditSkills, setUnmatchedEditSkills] = useState([]);
+    const [otherSkillInput, setOtherSkillInput] = useState('');
 
     const [jobPostError, setJobPostError] = useState(null);
 
@@ -174,6 +179,39 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
             return () => clearTimeout(timer);
         }
     }, [targetApplicantId, activeTab, expandedJob]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadSkillDropdown = async () => {
+            try {
+                const response = await fetch(`${API_BASE}/dropdowns/skills`, {
+                    headers: {
+                        Accept: 'application/json',
+                    },
+                });
+
+                const data = await response.json();
+                if (!isMounted) return;
+
+                if (response.ok && data?.status === 'success' && Array.isArray(data.categories)) {
+                    setSkillCategories(data.categories);
+                } else {
+                    setSkillCategories([]);
+                }
+            } catch {
+                if (isMounted) {
+                    setSkillCategories([]);
+                }
+            }
+        };
+
+        loadSkillDropdown();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     const myJobs = useMemo(() => {
         if (!Array.isArray(jobs) || !profile?.id) return [];
@@ -304,18 +342,11 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
             return setJobPostError("Job Title contains invalid special characters (e.g., @, !, $, etc.).");
         }
 
-        if (newJob.requiredSkills) {
-            const skillsRegex = /^[a-zA-Z0-9\s,#+\-\.]+$/;
-            if (!skillsRegex.test(newJob.requiredSkills)) {
-                return setJobPostError("Required Skills contains invalid special characters. Use commas to separate.");
-            }
-        }
-
         if (newJob.salaryMin && newJob.salaryMax && Number(newJob.salaryMin) > Number(newJob.salaryMax)) {
             return setJobPostError("Minimum Salary cannot be greater than Maximum Salary.");
         }
 
-        const skills = newJob.requiredSkills.split(',').map(s => s.trim()).filter(s => s !== "");
+        const skills = Array.from(new Set([...selectedSkillNames, ...unmatchedEditSkills]));
         const payload = {
             ...newJob,
             id: editingJob ? editingJob.id : Date.now(),
@@ -337,34 +368,82 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
 
         setActiveTab('jobs');
         setEditingJob(null);
-        setNewJob({ title: '', salaryMin: '', salaryMax: '', location: '', type: 'Full-time', requiredSkills: '', educationalAttainmentRequired: '', description: '' });
+        setSelectedSkillIds([]);
+        setUnmatchedEditSkills([]);
+        setOtherSkillInput('');
+        setNewJob({ title: '', salaryMin: '', salaryMax: '', location: '', type: 'Full-time', requiredSkills: [], educationalAttainmentRequired: '', description: '' });
     };
 
     const handleEditJob = (job) => {
-        let formattedSkills = '';
+        let normalizedSkills = [];
         if (job.requiredSkills) {
             if (Array.isArray(job.requiredSkills)) {
-                formattedSkills = job.requiredSkills.join(', ');
+                normalizedSkills = job.requiredSkills.map((item) => String(item || '').trim()).filter(Boolean);
             } else if (typeof job.requiredSkills === 'string') {
                 try {
                     const parsed = JSON.parse(job.requiredSkills);
-                    formattedSkills = Array.isArray(parsed) ? parsed.join(', ') : job.requiredSkills;
+                    if (Array.isArray(parsed)) {
+                        normalizedSkills = parsed.map((item) => String(item || '').trim()).filter(Boolean);
+                    } else {
+                        normalizedSkills = job.requiredSkills.split(',').map((item) => item.trim()).filter(Boolean);
+                    }
                 } catch {
-                    formattedSkills = job.requiredSkills;
+                    normalizedSkills = job.requiredSkills.split(',').map((item) => item.trim()).filter(Boolean);
                 }
             }
         }
+
+        const matchedIds = [];
+        const unmatched = [];
+
+        normalizedSkills.forEach((skillName) => {
+            const id = skillLookup.byName[skillName.toLowerCase()];
+            if (id) {
+                matchedIds.push(id);
+            } else {
+                unmatched.push(skillName);
+            }
+        });
+
+        setSelectedSkillIds(Array.from(new Set(matchedIds)));
+        setUnmatchedEditSkills(Array.from(new Set(unmatched)));
 
         setNewJob({
             ...job,
             salaryMin: job.salaryMin ?? '',
             salaryMax: job.salaryMax ?? '',
             educationalAttainmentRequired: normalizeMinimumEducationRequirement(job.educationalAttainmentRequired || ''),
-            requiredSkills: formattedSkills
+            requiredSkills: normalizedSkills
         });
         setEditingJob(job);
         setJobPostError(null);
         setActiveTab('post_job');
+    };
+
+    const toggleSkillSelection = (skillId) => {
+        setSelectedSkillIds((prev) => {
+            const numericId = Number(skillId);
+            if (prev.includes(numericId)) {
+                return prev.filter((id) => id !== numericId);
+            }
+
+            return [...prev, numericId];
+        });
+    };
+
+    const addOtherSkill = () => {
+        const nextSkill = otherSkillInput.trim();
+        if (!nextSkill) return;
+
+        setUnmatchedEditSkills((prev) => {
+            const exists = prev.some((skill) => skill.toLowerCase() === nextSkill.toLowerCase());
+            return exists ? prev : [...prev, nextSkill];
+        });
+        setOtherSkillInput('');
+    };
+
+    const removeOtherSkill = (skillToRemove) => {
+        setUnmatchedEditSkills((prev) => prev.filter((skill) => skill !== skillToRemove));
     };
 
     const employerRequirementDocs = [
@@ -478,6 +557,85 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
 
     const salaryOptions = Array.from({ length: 99 }, (_, index) => (index + 2) * 5000);
     const statusFilterOptions = ['All', 'Pending', 'Interview', 'Hired', 'Declined'];
+    const skillLookup = useMemo(() => {
+        const byId = {};
+        const byName = {};
+
+        skillCategories.forEach((category) => {
+            (category.skills || []).forEach((skill) => {
+                const id = Number(skill.id);
+                const name = String(skill.skill_name || '').trim();
+                if (!id || !name) return;
+
+                byId[id] = name;
+                byName[name.toLowerCase()] = id;
+            });
+        });
+
+        return { byId, byName };
+    }, [skillCategories]);
+    const selectedSkillNames = useMemo(() => {
+        return selectedSkillIds
+            .map((id) => skillLookup.byId[Number(id)])
+            .filter(Boolean);
+    }, [selectedSkillIds, skillLookup]);
+    const skillRibbonCategories = useMemo(() => {
+        const groups = {
+            managerial: null,
+            technical: null,
+            soft: null,
+        };
+
+        skillCategories.forEach((category) => {
+            const name = String(category.name || '').toLowerCase();
+            if (name.includes('managerial')) {
+                groups.managerial = category;
+            } else if (name.includes('technical')) {
+                groups.technical = category;
+            } else if (name.includes('soft')) {
+                groups.soft = category;
+            }
+        });
+
+        return [
+            { key: 'managerial', label: 'Managerial Skills', category: groups.managerial },
+            { key: 'technical', label: 'Technical Skills', category: groups.technical },
+            { key: 'soft', label: 'Soft Skills', category: groups.soft },
+        ];
+    }, [skillCategories]);
+    const activeSkillGroup = useMemo(() => {
+        const selected = skillRibbonCategories.find((group) => group.key === activeSkillCatalogTab && group.category);
+        if (selected) {
+            return selected;
+        }
+
+        return skillRibbonCategories.find((group) => group.category) || skillRibbonCategories[0] || null;
+    }, [skillRibbonCategories, activeSkillCatalogTab]);
+
+    useEffect(() => {
+        if (!editingJob || !Array.isArray(newJob.requiredSkills) || newJob.requiredSkills.length === 0) {
+            return;
+        }
+
+        const matchedIds = [];
+        const unmatched = [];
+
+        newJob.requiredSkills.forEach((skillName) => {
+            const normalizedName = String(skillName || '').trim().toLowerCase();
+            if (!normalizedName) return;
+
+            const id = skillLookup.byName[normalizedName];
+            if (id) {
+                matchedIds.push(id);
+            } else {
+                unmatched.push(String(skillName).trim());
+            }
+        });
+
+        setSelectedSkillIds(Array.from(new Set(matchedIds)));
+        setUnmatchedEditSkills(Array.from(new Set(unmatched)));
+    }, [editingJob, newJob.requiredSkills, skillLookup]);
+
     const jobLocationOptions = useMemo(() => {
         if (newJob.location && !JOB_LOCATION_VALUES.has(newJob.location)) {
             return [
@@ -1095,8 +1253,92 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                             <textarea className="w-full p-3.5 border border-gray-200 rounded-lg bg-white placeholder-gray-400 h-44 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Job Description & Responsibilities..." value={newJob.description} onChange={e => setNewJob({ ...newJob, description: e.target.value })} />
 
                             <div>
-                                <label className="text-[11px] font-black text-gray-500 uppercase tracking-wider mb-2 block">Required Skills (Comma separated)</label>
-                                <input className="w-full p-3.5 border border-gray-200 rounded-lg bg-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. Communication, Excel, Sales" value={newJob.requiredSkills} onChange={e => { const cleanValue = e.target.value.replace(/[^a-zA-Z0-9\s,#+\-\.]/g, ''); setNewJob({ ...newJob, requiredSkills: cleanValue }); }} />
+                                <label className="text-[11px] font-black text-gray-500 uppercase tracking-wider mb-2 block">Required Skills (Standard List)</label>
+                                <div className="mt-2 border border-gray-200 rounded-lg bg-gray-50 p-3">
+                                    <div className="mb-3 flex flex-wrap gap-2">
+                                        {skillRibbonCategories.map((group) => (
+                                            <button
+                                                key={group.key}
+                                                type="button"
+                                                onClick={() => setActiveSkillCatalogTab(group.key)}
+                                                className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-colors ${activeSkillCatalogTab === group.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:text-blue-700'}`}
+                                            >
+                                                {group.label}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <div className="mb-3">
+                                        <p className="text-[11px] font-black text-gray-500 uppercase tracking-wider mb-2">{activeSkillGroup?.label || 'Skills'}</p>
+                                        {activeSkillGroup?.category && Array.isArray(activeSkillGroup.category.skills) && activeSkillGroup.category.skills.length > 0 ? (
+                                            <div className="flex flex-wrap gap-2">
+                                                {activeSkillGroup.category.skills.map((skill) => {
+                                                    const isSelected = selectedSkillIds.includes(Number(skill.id));
+                                                    return (
+                                                        <button
+                                                            key={skill.id}
+                                                            type="button"
+                                                            onClick={() => toggleSkillSelection(skill.id)}
+                                                            className={`px-2.5 py-1 text-xs font-bold rounded-full border transition-colors ${isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:text-blue-700'}`}
+                                                        >
+                                                            {skill.skill_name}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-gray-500">No skills available.</p>
+                                        )}
+                                    </div>
+
+                                    <div className="pt-1">
+                                        <p className="text-[11px] font-black text-gray-500 uppercase tracking-wider mb-2">Other</p>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={otherSkillInput}
+                                                onChange={(e) => setOtherSkillInput(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        addOtherSkill();
+                                                    }
+                                                }}
+                                                className="flex-1 p-2.5 border border-gray-200 rounded-lg bg-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none"
+                                                placeholder="Add custom skill"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={addOtherSkill}
+                                                className="px-3 py-2 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+                                            >
+                                                Add
+                                            </button>
+                                        </div>
+                                        {unmatchedEditSkills.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                {unmatchedEditSkills.map((skill) => (
+                                                    <button
+                                                        key={skill}
+                                                        type="button"
+                                                        onClick={() => removeOtherSkill(skill)}
+                                                        className="bg-amber-50 text-amber-700 text-xs font-bold px-2.5 py-1 rounded border border-amber-200 hover:bg-amber-100"
+                                                    >
+                                                        {skill} ×
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <p className="mt-2 text-xs text-gray-500">Click skills in each ribbon. Use Other to add custom skills.</p>
+                                {selectedSkillNames.length > 0 && (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {selectedSkillNames.map((skill) => (
+                                            <span key={skill} className="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-1 rounded border border-blue-100">{skill}</span>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             <button disabled={!profile?.isVerified} onClick={handlePostJob} className="w-full bg-black text-white py-4 rounded-lg font-bold text-lg hover:bg-gray-900 transition-all active:scale-[0.98] shadow-md disabled:bg-gray-300 disabled:cursor-not-allowed mt-4">

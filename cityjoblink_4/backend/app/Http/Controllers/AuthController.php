@@ -212,19 +212,34 @@ class AuthController extends Controller
                 'is_priority_verified' => false,
             ], now()->addMinutes(10));
 
+            $mailTransport = (string) config('mail.default');
+            $mailFailureReason = null;
             $mailDelivered = true;
-            try {
-                Mail::raw("Your CityJobLink verification code is: {$otpCode}", function ($message) use ($request) {
-                    $message->to($request->email)
-                        ->subject('CityJobLink - Your Verification Code');
-                });
-            } catch (\Throwable $mailException) {
+
+            if (!$this->isDeliverableMailTransport($mailTransport)) {
                 $mailDelivered = false;
-                Log::warning('OTP email delivery failed during registration.', [
+                $mailFailureReason = "Mail transport '{$mailTransport}' does not send real emails.";
+                Log::warning('OTP email delivery skipped because mail transport is non-deliverable.', [
                     'email' => $request->email,
                     'role' => $role,
-                    'error' => $mailException->getMessage(),
+                    'mail_transport' => $mailTransport,
                 ]);
+            } else {
+                try {
+                    Mail::raw("Your CityJobLink verification code is: {$otpCode}", function ($message) use ($request) {
+                        $message->to($request->email)
+                            ->subject('CityJobLink - Your Verification Code');
+                    });
+                } catch (\Throwable $mailException) {
+                    $mailDelivered = false;
+                    $mailFailureReason = $mailException->getMessage();
+                    Log::warning('OTP email delivery failed during registration.', [
+                        'email' => $request->email,
+                        'role' => $role,
+                        'mail_transport' => $mailTransport,
+                        'error' => $mailException->getMessage(),
+                    ]);
+                }
             }
 
             if ($mailDelivered) {
@@ -233,10 +248,11 @@ class AuthController extends Controller
 
             if (config('app.debug')) {
                 return response()->json([
-                    'status' => 'success',
+                    'status' => 'error',
                     'message' => 'OTP generated, but email delivery failed. Use the provided dev OTP for local testing.',
+                    'mail_error' => $mailFailureReason,
                     'dev_otp' => (string) $otpCode,
-                ]);
+                ], 503);
             }
 
             return response()->json([
@@ -303,18 +319,32 @@ class AuthController extends Controller
                 'otp' => $otpCode,
             ], now()->addMinutes(10));
 
+            $mailTransport = (string) config('mail.default');
+            $mailFailureReason = null;
             $mailDelivered = true;
-            try {
-                Mail::raw("Your CityJobLink password reset code is: {$otpCode}", function ($message) use ($email) {
-                    $message->to($email)
-                        ->subject('CityJobLink - Password Reset Code');
-                });
-            } catch (\Throwable $mailException) {
+
+            if (!$this->isDeliverableMailTransport($mailTransport)) {
                 $mailDelivered = false;
-                Log::warning('Password reset OTP email delivery failed.', [
+                $mailFailureReason = "Mail transport '{$mailTransport}' does not send real emails.";
+                Log::warning('Password reset OTP email delivery skipped because mail transport is non-deliverable.', [
                     'email' => $email,
-                    'error' => $mailException->getMessage(),
+                    'mail_transport' => $mailTransport,
                 ]);
+            } else {
+                try {
+                    Mail::raw("Your CityJobLink password reset code is: {$otpCode}", function ($message) use ($email) {
+                        $message->to($email)
+                            ->subject('CityJobLink - Password Reset Code');
+                    });
+                } catch (\Throwable $mailException) {
+                    $mailDelivered = false;
+                    $mailFailureReason = $mailException->getMessage();
+                    Log::warning('Password reset OTP email delivery failed.', [
+                        'email' => $email,
+                        'mail_transport' => $mailTransport,
+                        'error' => $mailException->getMessage(),
+                    ]);
+                }
             }
 
             if ($mailDelivered) {
@@ -326,10 +356,11 @@ class AuthController extends Controller
 
             if (config('app.debug')) {
                 return response()->json([
-                    'status' => 'success',
+                    'status' => 'error',
                     'message' => 'Reset code generated, but email delivery failed. Use the dev reset code for local testing.',
+                    'mail_error' => $mailFailureReason,
                     'dev_otp' => $otpCode,
-                ]);
+                ], 503);
             }
 
             return response()->json([
@@ -810,6 +841,13 @@ class AuthController extends Controller
                 'message' => 'Failed to remove resume.',
             ], 500);
         }
+    }
+
+    private function isDeliverableMailTransport(string $mailTransport): bool
+    {
+        $transport = strtolower(trim($mailTransport));
+
+        return !in_array($transport, ['log', 'array'], true);
     }
 
     private function extractResumeText(string $filePath): string

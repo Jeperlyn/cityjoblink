@@ -19,6 +19,7 @@ Route::post('/upload/seeker-id-document', [AuthController::class, 'uploadSeekerI
 
 // --- Job Routes ---
 Route::get('/jobs', [FeatureController::class, 'jobs']);
+Route::get('/dropdowns/skills', [FeatureController::class, 'skillDropdownOptions']);
 Route::post('/jobs', [FeatureController::class, 'createJob']);
 // ✅ DAGDAG: Ito ang kailangan para sa Update functionality (PUT/PATCH)
 Route::put('/jobs/{id}', [FeatureController::class, 'updateJob']); 

@@ -11,6 +11,49 @@ use Illuminate\Support\Facades\Log;
 
 class FeatureController extends Controller
 {
+    public function skillDropdownOptions()
+    {
+        $rows = DB::table('skill_categories as c')
+            ->join('skills as s', 's.category_id', '=', 'c.id')
+            ->select([
+                'c.id as category_id',
+                'c.name as category_name',
+                'c.slug as category_slug',
+                's.id as skill_id',
+                's.skill_name',
+                's.slug as skill_slug',
+            ])
+            ->orderBy('c.name')
+            ->orderBy('s.skill_name')
+            ->get();
+
+        $categories = [];
+
+        foreach ($rows as $row) {
+            $categoryKey = (string) $row->category_id;
+
+            if (!isset($categories[$categoryKey])) {
+                $categories[$categoryKey] = [
+                    'id' => $row->category_id,
+                    'name' => $row->category_name,
+                    'slug' => $row->category_slug,
+                    'skills' => [],
+                ];
+            }
+
+            $categories[$categoryKey]['skills'][] = [
+                'id' => $row->skill_id,
+                'skill_name' => $row->skill_name,
+                'slug' => $row->skill_slug,
+            ];
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'categories' => array_values($categories),
+        ]);
+    }
+
     public function seekerProfile(Request $request)
     {
         $request->validate([
