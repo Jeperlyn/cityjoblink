@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Building2, CreditCard, FileCheck, HelpCircle, UploadCloud, Globe, MapPin, Phone, CheckCircle, AlertCircle, Loader2, Lock, UserCheck, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { API_BASE } from '../lib/apiBase';
+import loginBackground from '../assets/img/login.jpg';
+import logoPESO from '../assets/img/logo-PESO.png';
 import {
     formatQcId338,
     normalizeQrGenderToFormValue,
@@ -478,21 +480,28 @@ const handleSubmit = async (e) => {
     }
   };
 
-  return (
-    <div className="min-h-[85vh] flex items-center justify-center bg-gray-100 px-4 py-12 font-sans">
+    return (
+        <main
+            className="relative min-h-screen flex items-center justify-center px-4 py-10 font-sans bg-cover bg-center"
+            style={{ backgroundImage: `url(${loginBackground})` }}
+        >
+            <div className="absolute inset-0 bg-black/35 backdrop-blur-[1px]" />
       <SmartModal type={modal.type} title={modal.title} message={modal.message} onClose={() => setModal({ type: null })} />
         
-      <div className="bg-white p-8 rounded-2xl shadow-2xl border border-gray-200 max-w-md w-full animate-in fade-in zoom-in duration-300">
+            <section className="relative w-full max-w-md md:max-w-lg bg-white/95 p-6 md:p-8 rounded-2xl shadow-2xl border border-white/70 animate-in fade-in zoom-in duration-300">
         
-        {/* HEADER */}
-        <div className="text-center mb-6">
-            <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
-                {isOtpStep ? 'Security Check' : (isForgotPasswordMode ? 'Reset Password' : (mode === 'login' ? 'CityJobLink' : 'Registration'))}
-            </h2>
+                <header className="text-center mb-6">
+                        <img src={logoPESO} alt="PESO QC Logo" className="h-20 md:h-24 w-auto mx-auto mb-4 object-contain" />
+                        <h1 className="text-3xl font-bold text-qc-blue tracking-tight">
+                                CityJobLink
+                        </h1>
+                    <h2 className="text-base font-semibold text-slate-700 mt-1">
+                {isOtpStep ? 'Security Check' : (isForgotPasswordMode ? 'Reset Password' : 'Welcome, QCitizens!')}
+                    </h2>
             <p className="text-gray-500 text-sm mt-1">
-                {isOtpStep ? 'Verify your identity to proceed.' : (isForgotPasswordMode ? 'Request and verify your password reset code.' : (mode === 'login' ? 'Access your QCitizen portal.' : "Join the local workforce today."))}
+                {isOtpStep ? 'Verify your identity to proceed.' : (isForgotPasswordMode ? 'Request and verify your password reset code.' : (mode === 'login' ? 'Access your Employment Portal' : "Join the local workforce today."))}
             </p>
-        </div>
+                </header>
         
         {isOtpStep ? (
             <form onSubmit={handleVerifyOtp} className="space-y-6">
@@ -506,17 +515,17 @@ const handleSubmit = async (e) => {
                         required 
                         type="text" 
                         maxLength="6"
-                        className="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 text-center text-2xl tracking-[0.5em] font-black" 
+                        className="w-full p-4 bg-white border-2 border-slate-200 rounded-xl focus:outline-none focus:border-qc-blue text-center text-2xl tracking-[0.5em] font-black" 
                         placeholder="000000" 
                         value={otpCode} 
                         onChange={e => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))} 
                     />
                 </div>
-                <button type="submit" disabled={isLoading} className={`w-full text-white font-bold py-3 rounded-xl transition-all text-lg shadow-lg flex items-center justify-center gap-2 ${isLoading ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700 active:scale-95'}`}>
+                <button type="submit" disabled={isLoading} className={`w-full text-black font-bold py-3 rounded-xl transition-all text-lg shadow-lg flex items-center justify-center gap-2 ${isLoading ? 'bg-gray-300' : 'bg-[#FFD700] hover:bg-yellow-400 active:scale-95'}`}>
                     {isLoading && <Loader2 className="animate-spin" size={20}/>}
                     Verify Account
                 </button>
-                <button type="button" onClick={() => setIsOtpStep(false)} className="w-full text-gray-400 text-sm hover:text-blue-600 transition-colors">Wrong email? Change it here.</button>
+                <button type="button" onClick={() => setIsOtpStep(false)} className="w-full text-gray-500 text-sm hover:text-qc-blue transition-colors">Wrong email? Change it here.</button>
             </form>
         ) : (
             <>
@@ -525,7 +534,7 @@ const handleSubmit = async (e) => {
                         <input
                             required
                             type="email"
-                            className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                            className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue"
                             placeholder="Email (juan@gmail.com)"
                             value={formData.email}
                             onChange={e => setFormData({...formData, email: e.target.value})}
@@ -537,7 +546,7 @@ const handleSubmit = async (e) => {
                                     required
                                     type="text"
                                     maxLength="6"
-                                    className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                                    className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue"
                                     placeholder="6-digit reset code"
                                     value={formData.resetOtp}
                                     onChange={e => setFormData({...formData, resetOtp: e.target.value.replace(/[^0-9]/g, '')})}
@@ -546,7 +555,7 @@ const handleSubmit = async (e) => {
                                     <input
                                         required
                                         type={showPassword ? 'text' : 'password'}
-                                        className="w-full p-3 pr-11 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                                        className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue"
                                         placeholder="New Password (Min. 8 Chars)"
                                         value={formData.password}
                                         onChange={e => setFormData({...formData, password: e.target.value})}
@@ -564,7 +573,7 @@ const handleSubmit = async (e) => {
                                     <input
                                         required
                                         type={showConfirmPassword ? 'text' : 'password'}
-                                        className="w-full p-3 pr-11 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                                        className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue"
                                         placeholder="Confirm New Password"
                                         value={formData.confirmPassword}
                                         onChange={e => setFormData({...formData, confirmPassword: e.target.value})}
@@ -581,7 +590,7 @@ const handleSubmit = async (e) => {
                             </>
                         )}
 
-                        <button type="submit" disabled={isLoading} className={`w-full text-white font-bold py-3 rounded-xl transition-all mt-4 text-lg shadow-lg flex items-center justify-center gap-2 ${isLoading ? 'bg-gray-400' : 'bg-black hover:bg-gray-800 active:scale-95'}`}>
+                        <button type="submit" disabled={isLoading} className={`w-full text-black font-bold py-3 rounded-xl transition-all mt-4 text-lg shadow-lg flex items-center justify-center gap-2 ${isLoading ? 'bg-gray-300' : 'bg-[#FFD700] hover:bg-yellow-400 active:scale-95'}`}>
                             {isLoading && <Loader2 className="animate-spin" size={20}/>}
                             {forgotCodeSent ? 'Reset Password' : 'Send Reset Code'}
                         </button>
@@ -594,7 +603,7 @@ const handleSubmit = async (e) => {
                                 setFormData({...formData, password: '', confirmPassword: '', resetOtp: ''});
                                 setModal({ type: null });
                             }}
-                            className="w-full text-gray-500 hover:text-blue-600 text-sm font-semibold transition-colors"
+                            className="w-full text-gray-500 hover:text-qc-blue text-sm font-semibold transition-colors"
                         >
                             Back to Login
                         </button>
@@ -692,9 +701,9 @@ const handleSubmit = async (e) => {
                             </div>
                         )}
                         
-                        <input required type="email" className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Email (juan@gmail.com)" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                        <input required type="email" className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue" placeholder="Email (juan@gmail.com)" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                         <div className="relative">
-                            <input required type={showPassword ? 'text' : 'password'} className="w-full p-3 pr-11 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Password (Min. 8 Chars)" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+                            <input required type={showPassword ? 'text' : 'password'} className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue" placeholder="Password (Min. 8 Chars)" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
@@ -706,7 +715,7 @@ const handleSubmit = async (e) => {
                         </div>
                         {mode === 'register' && (
                             <div className="relative">
-                                <input required type={showConfirmPassword ? 'text' : 'password'} className="w-full p-3 pr-11 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Confirm Password" value={formData.confirmPassword} onChange={e => setFormData({...formData, confirmPassword: e.target.value})} />
+                                <input required type={showConfirmPassword ? 'text' : 'password'} className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue" placeholder="Confirm Password" value={formData.confirmPassword} onChange={e => setFormData({...formData, confirmPassword: e.target.value})} />
                                 <button
                                     type="button"
                                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -770,16 +779,16 @@ const handleSubmit = async (e) => {
                                         setFormData({...formData, password: '', confirmPassword: '', resetOtp: ''});
                                         setModal({ type: null });
                                     }}
-                                    className="text-sm font-semibold text-blue-600 hover:underline"
+                                    className="text-sm font-semibold text-qc-blue hover:underline"
                                 >
                                     Forgot password?
                                 </button>
                             </div>
                         )}
 
-                        <button type="submit" disabled={isLoading} className={`w-full text-white font-bold py-3 rounded-xl transition-all mt-4 text-lg shadow-lg flex items-center justify-center gap-2 ${isLoading ? 'bg-gray-400' : 'bg-black hover:bg-gray-800 active:scale-95'}`}>
+                        <button type="submit" disabled={isLoading} className={`w-full text-black font-bold py-3 rounded-xl transition-all mt-4 text-lg shadow-lg flex items-center justify-center gap-2 ${isLoading ? 'bg-gray-300' : 'bg-[#FFD700] hover:bg-yellow-400 active:scale-95'}`}>
                             {isLoading && <Loader2 className="animate-spin" size={20}/>}
-                            {mode === 'login' ? 'Log In' : 'Create Account'}
+                            {mode === 'login' ? 'Sign In' : 'Create Account'}
                         </button>
                         </form>
                     </>
@@ -792,14 +801,14 @@ const handleSubmit = async (e) => {
                         setForgotCodeSent(false);
                         setFormData({...formData, password: '', confirmPassword: '', resetOtp: ''});
                         setModal({type: null});
-                    }} className="text-blue-600 font-bold hover:underline text-sm transition-all">
+                    }} className="text-qc-blue font-bold hover:underline text-sm transition-all">
                         {mode === 'login' ? "New here? Register now." : "Already have an account? Login here."}
                     </button>
                 </div>
             </>
         )}
-      </div>
-    </div>
+      </section>
+    </main>
   );
 };
 

@@ -30,6 +30,7 @@ const Toast = ({ messages }) => (
 
 // Import Components
 import Navbar from './components/Navbar';
+import InstitutionalFooter from './components/InstitutionalFooter';
 import LandingPage, { PublicListings } from './pages/LandingPage';
 import LoginScreen from './pages/Login'; 
 import SeekerDashboard, { FindJobs, JobDetailsPage, DashboardOverview } from './pages/SeekerDashboard';
@@ -1403,9 +1404,12 @@ const App = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
+        <div className="min-h-screen bg-gray-50 font-sans text-gray-900 flex flex-col">
             <Navbar user={user} onLogout={handleLogout} onNavigate={handleNavigate} unreadNotifs={notifications.filter(n => n.toId === user?.id && !n.read).length} currentView={currentView} />
-            {renderContent()}
+            <main className="flex-1">
+                {renderContent()}
+            </main>
+            <InstitutionalFooter />
             <Toast messages={toastMessages} />
         </div>
     );

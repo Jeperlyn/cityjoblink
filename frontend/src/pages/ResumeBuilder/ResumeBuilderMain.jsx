@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Trash2, Plus, Download, ChevronLeft, Upload } from "lucide-react";
+import Swal from 'sweetalert2';
 
 // UI Components
 // Note: Siguraduhing nagawa mo na ang mga file na ito sa components/ui folder
@@ -8,6 +9,21 @@ import { Input } from "./components/ui/input.jsx";
 import { Textarea } from "./components/ui/textarea.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card.jsx";
 import ResumePreview from "./components/ui/ResumePreview.jsx";
+
+const toastMsg = (title, icon = 'success') => {
+  const Toast = Swal.mixin({
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 3000,
+    timerProgressBar: true,
+  });
+
+  Toast.fire({
+    icon,
+    title,
+  });
+};
 
 export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
   const fileInputRef = useRef(null);
@@ -152,7 +168,7 @@ export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
     const file = e.target.files?.[0];
     if (file) {
       if (file.type !== 'application/pdf' && !file.type.includes('word') && file.type !== 'application/msword') {
-        alert('Only PDF and Word documents allowed');
+        toastMsg('Only PDF and Word documents allowed', 'warning');
         return;
       }
       const reader = new FileReader();
@@ -270,7 +286,7 @@ export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
       }
     } catch (error) {
       console.error("Failed to download resume:", error);
-      alert("Failed to download. Please try again.");
+      toastMsg('Failed to download. Please try again.', 'error');
     }
   };
 
