@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    'n8n' => [
+        'match_webhook_url' => env('N8N_MATCH_WEBHOOK_URL'),
+        'seeker_webhook_url' => env('N8N_SEEKER_WEBHOOK_URL'),
+        'seeker_resume_webhook_url' => env('N8N_SEEKER_RESUME_WEBHOOK_URL'),
+        'basic_auth_user' => env('N8N_BASIC_AUTH_USER'),
+        'basic_auth_password' => env('N8N_BASIC_AUTH_PASSWORD'),
+        'timeout_seconds' => env('N8N_MATCH_TIMEOUT_SECONDS', 10),
+    ],
+
 ];

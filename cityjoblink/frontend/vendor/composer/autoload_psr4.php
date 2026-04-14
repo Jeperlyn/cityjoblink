@@ -8,3 +8,5 @@ $baseDir = dirname($vendorDir);
 return array(
     'Legion5\\Frontend\\' => array($baseDir . '/src'),
 );
+
+

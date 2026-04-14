@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Trash2, Plus, Download, ChevronLeft, Upload } from "lucide-react";
+import Swal from 'sweetalert2';
 
 // UI Components
 // Note: Siguraduhing nagawa mo na ang mga file na ito sa components/ui folder
@@ -8,6 +9,21 @@ import { Input } from "./components/ui/input.jsx";
 import { Textarea } from "./components/ui/textarea.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card.jsx";
 import ResumePreview from "./components/ui/ResumePreview.jsx";
+
+const toastMsg = (title, icon = 'success') => {
+  const Toast = Swal.mixin({
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 3000,
+    timerProgressBar: true,
+  });
+
+  Toast.fire({
+    icon,
+    title,
+  });
+};
 
 export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
   const fileInputRef = useRef(null);
@@ -34,18 +50,62 @@ export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
     summary: "",
   });
 
-  // ✅ AUTO-FILL DATA (Dito nangyayari ang magic pag may naka-login)
+  const parseNameForResume = (rawName) => {
+    const value = String(rawName || "").trim();
+    if (!value) {
+      return { firstName: "", middleName: "", lastName: "" };
+    }
+
+    if (value.includes(",")) {
+      const [left, ...rightParts] = value.split(",");
+      const lastName = String(left || "").trim();
+      const rightTokens = rightParts
+        .join(" ")
+        .split(/\s+/)
+        .filter(Boolean);
+
+      if (rightTokens.length === 0) {
+        return { firstName: "", middleName: "", lastName };
+      }
+
+      if (rightTokens.length === 1) {
+        return { firstName: rightTokens[0], middleName: "", lastName };
+      }
+
+      return {
+        firstName: rightTokens.slice(0, -1).join(" "),
+        middleName: rightTokens[rightTokens.length - 1],
+        lastName,
+      };
+    }
+
+    const tokens = value.split(/\s+/).filter(Boolean);
+
+    if (tokens.length === 1) {
+      return { firstName: tokens[0], middleName: "", lastName: "" };
+    }
+
+    if (tokens.length === 2) {
+      return { firstName: tokens[0], middleName: "", lastName: tokens[1] };
+    }
+
+    return {
+      firstName: tokens[0],
+      middleName: tokens.slice(1, -1).join(" "),
+      lastName: tokens[tokens.length - 1],
+    };
+  };
+
+
   useEffect(() => {
     if (user) {
-      // Split name logic (Simple split by space)
-      const nameParts = user.name ? user.name.split(" ") : [];
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+      const parsedName = parseNameForResume(user.name);
 
       setPersonalInfo((prev) => ({
         ...prev,
-        firstName: firstName,
-        lastName: lastName,
+        firstName: parsedName.firstName,
+        middleName: parsedName.middleName,
+        lastName: parsedName.lastName,
         email: user.email || "",
         phone: user.contact || "",
         location: user.address || "",
@@ -108,7 +168,7 @@ export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
     const file = e.target.files?.[0];
     if (file) {
       if (file.type !== 'application/pdf' && !file.type.includes('word') && file.type !== 'application/msword') {
-        alert('Only PDF and Word documents allowed');
+        toastMsg('Only PDF and Word documents allowed', 'warning');
         return;
       }
       const reader = new FileReader();
@@ -226,7 +286,7 @@ export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
       }
     } catch (error) {
       console.error("Failed to download resume:", error);
-      alert("Failed to download. Please try again.");
+      toastMsg('Failed to download. Please try again.', 'error');
     }
   };
 
@@ -556,3 +616,4 @@ export default function ResumeBuilderMain({ onBack, user, onSaveResume }) {
     </div>
   );
 }
+

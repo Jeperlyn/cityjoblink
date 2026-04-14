@@ -1,1 +1,26 @@
-*.sqlite*
+# Local environment files (Crucial! Stops DB credential overlaps)
+.env
+.env.backup
+.env.production
+
+# Dependencies (Stops the "vendor" and "node_modules" nightmare)
+/vendor/
+/node_modules/
+
+# Database artifacts
+*.sqlite
+/database/backups/*.sql
+
+# Laravel specific
+/storage/*.key
+/public/storage
+/public/hot
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/logs/*.log
+
+# IDE files
+.vscode/
+.idea/
+.DS_Store

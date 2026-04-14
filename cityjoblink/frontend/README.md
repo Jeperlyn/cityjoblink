@@ -19,3 +19,5 @@ If you are developing a production application, we recommend using TypeScript wi
 1. Download PostgreSQL 18 from the official website
 2. Create a database named `cityjoblink`
 3. Update `.env` with your credentials
+
+

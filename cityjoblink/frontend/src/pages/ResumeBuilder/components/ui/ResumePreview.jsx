@@ -52,3 +52,4 @@ const ResumePreview = forwardRef(({ template, ...props }, ref) => {
 ResumePreview.displayName = "ResumePreview";
 
 export default ResumePreview;
+

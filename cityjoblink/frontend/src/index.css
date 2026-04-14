@@ -5,3 +5,50 @@
 body {
   background-color: #f9fafb; /* gray-50 */
 }
+
+@layer components {
+  .gov-card {
+    @apply rounded-gov bg-white shadow-sm border border-slate-200;
+  }
+
+  .layout-container {
+    @apply max-w-[1280px] mx-auto w-full px-4 md:px-6;
+  }
+
+  .layout-grid-12 {
+    @apply grid grid-cols-12 gap-4 md:gap-6;
+  }
+
+  .h1-locked {
+    @apply text-3xl md:text-4xl font-bold tracking-tight;
+  }
+
+  .h2-locked {
+    @apply text-2xl md:text-3xl font-bold tracking-tight;
+  }
+
+  .h3-locked {
+    @apply text-xl md:text-2xl font-bold tracking-tight;
+  }
+
+  .nav-link-fixed {
+    @apply relative inline-flex items-center h-10 px-1 text-sm font-semibold transition-colors;
+    box-shadow: inset 0 -2px 0 0 transparent;
+  }
+
+  .nav-link-fixed.is-active {
+    @apply text-qc-blue;
+    box-shadow: inset 0 -2px 0 0 #f59e0b;
+  }
+
+  .tab-pill-fixed {
+    @apply relative inline-flex items-center justify-center h-10 px-6 rounded-xl text-sm font-semibold capitalize transition-colors whitespace-nowrap;
+    box-shadow: inset 0 -3px 0 0 transparent;
+  }
+
+  .tab-pill-fixed.is-active {
+    @apply text-qc-blue bg-white;
+    box-shadow: inset 0 -3px 0 0 #1d4ed8;
+  }
+}
+

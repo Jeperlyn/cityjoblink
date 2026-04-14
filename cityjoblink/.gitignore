@@ -1,18 +1,31 @@
-# Dependencies
-node_modules/
-frontend/node_modules/
+# --- Root & General ---
+.DS_Store
+.vscode/
+.idea/
+*.log
+files.txt
+
+# --- Backend (Laravel) ---
+backend/.env
+backend/.env.*
 backend/vendor/
+backend/storage/framework/cache/data/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/storage/logs/*.log
+backend/database/backups/*.sql
 
-# Env files (Security)
-.env
-.env.local
+# --- Frontend (Node/Vite) ---
+frontend/node_modules/
+frontend/.env
+frontend/.env.local
+frontend/.env.production    <-- Added for security
+frontend/.env.development
+frontend/dist/
+frontend/build/
+frontend/.vite/
 
-# Build outputs
-dist/
-build/
-.vite/
-
-# Debug logs
+# --- Debug Logs ---
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

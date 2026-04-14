@@ -143,3 +143,4 @@ export const INITIAL_NOTIFICATIONS = [
   { id: 1, toId: 201, content: "Your job application for Admin Asst was viewed.", read: false, date: Date.now() - 300000 }, 
   { id: 2, toId: 201, content: "Your profile has been fully matched.", read: true, date: Date.now() - 86400000 }
 ];
+

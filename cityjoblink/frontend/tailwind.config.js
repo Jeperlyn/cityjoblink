@@ -5,7 +5,17 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      // Custom border radius must go here
+      borderRadius: {
+        'gov': '12px', 
+      },
+      // Make sure your colors are also inside extend
+      colors: {
+        'qc-blue': '#0038A8',
+        'qc-gold': '#FFD700',
+      }
+    },
   },
   plugins: [],
 }

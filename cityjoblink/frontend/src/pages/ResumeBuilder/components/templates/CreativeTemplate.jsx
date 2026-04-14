@@ -80,3 +80,4 @@ export default function CreativeTemplate({ personalInfo = {}, experiences = [], 
     </Card>
   );
 }
+
