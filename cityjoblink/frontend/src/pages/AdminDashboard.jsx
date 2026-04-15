@@ -1,6 +1,6 @@
 // src/pages/AdminDashboard.jsx
 import React, { useMemo, useState } from 'react';
-import { File, Calendar, Plus, Users, MapPin, Clock, CheckCircle, XCircle, AlertTriangle, Star, TrendingUp, FileCheck, ExternalLink, ChevronDown } from 'lucide-react';
+import { File, Calendar, Plus, Users, MapPin, Clock, CheckCircle, XCircle, AlertTriangle, Star, TrendingUp, FileCheck, ExternalLink, ChevronDown, GraduationCap, Trash2 } from 'lucide-react';
 import { buildBackendUrl } from '../lib/apiBase';
 
 const seekerStatusLabels = {
@@ -19,6 +19,14 @@ const seekerStatusStyles = {
     pending: 'bg-blue-100 text-blue-700 border-blue-200',
     not_submitted: 'bg-slate-100 text-slate-700 border-slate-200',
     error: 'bg-red-100 text-red-700 border-red-200',
+};
+
+const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+        month: 'long', day: 'numeric', year: 'numeric',
+    });
 };
 
 const format12Hour = (time24) => {
@@ -41,6 +49,9 @@ const AdminDashboard = ({
     onAddJobFair,
     notify,
     onMessageEmployer,
+    trainings = [],
+    onAddTraining,
+    onDeleteTraining,
 }) => {
     const [activeTab, setActiveTab] = useState('overview');
     const [analyticsTab, setAnalyticsTab] = useState('employer');
@@ -69,6 +80,18 @@ const AdminDashboard = ({
         imageFile: null,
         highlightsString: '',
     });
+
+    const [newTraining, setNewTraining] = useState({
+        title: '',
+        provider: 'QCTAC',
+        type: '',
+        description: '',
+        slots: '',
+        start_date: '',
+        end_date: '',
+    });
+    const [showTrainingSuccessModal, setShowTrainingSuccessModal] = useState(false);
+    const [isSubmittingTraining, setIsSubmittingTraining] = useState(false);
 
     const summary = analytics?.summary || {};
     const ratingBreakdown = analytics?.ratingBreakdown || [];
@@ -148,6 +171,41 @@ const AdminDashboard = ({
             highlightsString: '',
         });
         setShowFairSuccessModal(true);
+    };
+
+    const handlePostTraining = async (e) => {
+        e.preventDefault();
+        setIsSubmittingTraining(true);
+        try {
+            await onAddTraining({ ...newTraining, slots: Number(newTraining.slots) });
+            setNewTraining({ title: '', provider: 'QCTAC', type: '', description: '', slots: '', start_date: '', end_date: '' });
+            setShowTrainingSuccessModal(true);
+        } catch (err) {
+            notify('error', err.message || 'Failed to add training.');
+        } finally {
+            setIsSubmittingTraining(false);
+        }
+    };
+
+    const handleDeleteTrainingClick = async (trainingId, trainingTitle) => {
+        const Swal = (await import('sweetalert2')).default;
+        const result = await Swal.fire({
+            title: 'Delete Training?',
+            text: `"${trainingTitle}" will be permanently removed.`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, delete it',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#dc2626',
+        });
+        if (result.isConfirmed) {
+            try {
+                await onDeleteTraining(trainingId);
+                notify('success', 'Training deleted.');
+            } catch (err) {
+                notify('error', err.message || 'Failed to delete training.');
+            }
+        }
     };
 
     const handleApproveClick = (empId) => {
@@ -279,6 +337,7 @@ const AdminDashboard = ({
                         { id: 'employers', label: 'Verify Employers', icon: <Users size={16} /> },
                         { id: 'seekers', label: 'Verify Seekers', icon: <FileCheck size={16} /> },
                         { id: 'jobfairs', label: 'Manage Job Fairs', icon: <Calendar size={16} /> },
+                        { id: 'trainings', label: 'Manage Trainings', icon: <GraduationCap size={16} /> },
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -862,7 +921,7 @@ const AdminDashboard = ({
                                     <h3 className="font-black text-2xl mb-4 text-gray-900 leading-tight">{newFair.title || 'Official Job Fair Event Title'}</h3>
                                     <div className="text-sm text-gray-600 grid grid-cols-2 gap-y-3 gap-x-4 mb-6">
                                         <div className="flex items-center gap-2 font-bold"><MapPin size={16} className="text-cyan-600" /> {newFair.location || ' '}</div>
-                                        <div className="flex items-center gap-2 font-bold"><Calendar size={16} className="text-cyan-600" /> {newFair.date || '--- --, ----'}</div>
+                                        <div className="flex items-center gap-2 font-bold"><Calendar size={16} className="text-cyan-600" /> {newFair.date ? formatDate(newFair.date) : '--- --, ----'}</div>
                                         <div className="flex items-center gap-2 font-bold col-span-2">
                                             <Clock size={16} className="text-cyan-600" /> 
                                             {newFair.startTime && newFair.endTime ? `${format12Hour(newFair.startTime)} - ${format12Hour(newFair.endTime)}` : '--:-- -- - --:-- --'}
@@ -885,7 +944,7 @@ const AdminDashboard = ({
                                             </div>
                                             <div>
                                                 <p className="font-black text-sm text-gray-900">{fair.title}</p>
-                                                <p className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1"><Calendar size={10} /> {fair.date}</p>
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1"><Calendar size={10} /> {formatDate(fair.date)}</p>
                                             </div>
                                         </div>
                                         <div className="text-right">
@@ -895,6 +954,96 @@ const AdminDashboard = ({
                                     </div>
                                 ))}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'trainings' && (
+                <div className="grid lg:grid-cols-2 gap-8">
+                    <div className="bg-white p-8 rounded-2xl shadow-sm border h-fit">
+                        <h2 className="font-black text-xl mb-6 flex items-center gap-3 text-gray-900 border-b pb-4"><Plus size={24} className="text-emerald-600" /> Add New Training</h2>
+                        <form onSubmit={handlePostTraining} className="space-y-5">
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Training Title</label>
+                                <input required className="w-full border-gray-200 border px-4 py-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black outline-none transition-all placeholder:text-gray-300" placeholder="e.g. Barista NC II" value={newTraining.title} onChange={(e) => setNewTraining({ ...newTraining, title: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Training Type</label>
+                                <select required className="w-full border-gray-200 border px-4 py-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black outline-none transition-all" value={newTraining.type} onChange={(e) => setNewTraining({ ...newTraining, type: e.target.value })}>
+                                    <option value="">Select type...</option>
+                                    <option value="Blended Training">Blended Training</option>
+                                    <option value="Free Training">Free Training</option>
+                                    <option value="Free Assessment">Free Assessment</option>
+                                    <option value="Free Training and Assessment">Free Training and Assessment</option>
+                                    <option value="Free Competency Assessment">Free Competency Assessment</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Provider</label>
+                                <input required className="w-full border-gray-200 border px-4 py-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black outline-none transition-all" value={newTraining.provider} onChange={(e) => setNewTraining({ ...newTraining, provider: e.target.value })} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Start Date</label>
+                                    <input type="date" required className="w-full border-gray-200 border px-4 py-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black outline-none transition-all cursor-pointer" value={newTraining.start_date} onChange={(e) => setNewTraining({ ...newTraining, start_date: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">End Date</label>
+                                    <input type="date" required className="w-full border-gray-200 border px-4 py-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black outline-none transition-all cursor-pointer" value={newTraining.end_date} onChange={(e) => setNewTraining({ ...newTraining, end_date: e.target.value })} />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Available Slots</label>
+                                <input type="number" required min="1" className="w-full border-gray-200 border px-4 py-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black outline-none transition-all" placeholder="e.g. 30" value={newTraining.slots} onChange={(e) => setNewTraining({ ...newTraining, slots: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Description</label>
+                                <textarea className="w-full border-gray-200 border px-4 py-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black outline-none min-h-[80px]" placeholder="Briefly describe the training program..." value={newTraining.description} onChange={(e) => setNewTraining({ ...newTraining, description: e.target.value })} />
+                            </div>
+                            <button type="submit" disabled={isSubmittingTraining} className="w-full bg-black text-white font-black py-4 rounded-xl hover:bg-gray-800 disabled:bg-gray-400 transition-all shadow-lg text-sm uppercase tracking-widest">
+                                {isSubmittingTraining ? 'Adding...' : 'Add Training'}
+                            </button>
+                        </form>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-2xl border shadow-sm">
+                        <h3 className="font-black text-gray-900 mb-5 uppercase text-[10px] tracking-widest flex items-center justify-between">
+                            Current Trainings <span className="bg-gray-900 text-white px-2 py-0.5 rounded-full">{trainings.length}</span>
+                        </h3>
+                        <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                            {trainings.length === 0 ? (
+                                <div className="text-center py-12 text-gray-400">
+                                    <GraduationCap size={40} className="mx-auto mb-3 opacity-30" />
+                                    <p className="text-sm font-bold">No trainings yet.</p>
+                                    <p className="text-xs mt-1">Add a training using the form on the left.</p>
+                                </div>
+                            ) : (
+                                trainings.map((training) => (
+                                    <div key={training.id} className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex justify-between items-start group hover:border-emerald-200 hover:bg-white transition-all">
+                                        <div className="flex-1 min-w-0 mr-3">
+                                            <p className="font-black text-sm text-gray-900 truncate">{training.title}</p>
+                                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                <span className="bg-emerald-100 text-emerald-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">{training.type}</span>
+                                                <span className="text-[10px] font-bold text-gray-400">{training.provider}</span>
+                                            </div>
+                                            <p className="text-[10px] font-bold text-gray-400 mt-1">{training.slots} slots available</p>
+                                            {(training.start_date || training.end_date) && (
+                                                <p className="text-[10px] font-bold text-gray-400 mt-0.5 flex items-center gap-1">
+                                                    <Calendar size={9} /> {formatDate(training.start_date)} – {formatDate(training.end_date)}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteTrainingClick(training.id, training.title)}
+                                            className="shrink-0 p-2 rounded-xl text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                            title="Delete training"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1045,6 +1194,21 @@ const AdminDashboard = ({
                         </div>
                         <div className="p-6">
                             <button onClick={() => setShowFairSuccessModal(false)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition-colors shadow-lg">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showTrainingSuccessModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in duration-200">
+                        <div className="bg-emerald-50 p-6 flex flex-col items-center text-center border-b border-emerald-100">
+                            <div className="p-4 bg-emerald-100 text-emerald-600 rounded-full mb-4"><GraduationCap size={40} /></div>
+                            <h3 className="text-xl font-bold text-gray-900">Training Added!</h3>
+                            <p className="text-sm text-gray-600 mt-2">The training is now visible to job seekers.</p>
+                        </div>
+                        <div className="p-6">
+                            <button onClick={() => setShowTrainingSuccessModal(false)} className="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold hover:bg-emerald-700 transition-colors shadow-lg">Close</button>
                         </div>
                     </div>
                 </div>

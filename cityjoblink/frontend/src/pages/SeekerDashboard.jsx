@@ -1,10 +1,10 @@
 // src/pages/SeekerDashboard.jsx
 import React, { useState, useEffect, useRef } from 'react'; 
 import { 
-  Trash2, FileText, ChevronDown, ChevronUp, ChevronLeft, Search, 
-  Briefcase, Info, User, Users, Lock, CheckCircle, XCircle, 
+  Trash2, FileText, ChevronDown, ChevronUp, ChevronLeft, Search,
+  Briefcase, Info, User, Users, Lock, CheckCircle, XCircle,
   Star, Target, Zap, TrendingUp, Upload, FilePlus, Bookmark,
-  ExternalLink, Clock, MapPin, FileCheck, X, AlertCircle, Calendar, Eye
+  ExternalLink, Clock, MapPin, FileCheck, X, AlertCircle, Calendar, Eye, LayoutDashboard
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import 'sweetalert2/dist/sweetalert2.min.css';
@@ -577,14 +577,6 @@ export const DashboardOverview = ({ applications = [], jobs = [], onViewJob, onS
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      <HeroBanner
-        badge="My Dashboard"
-        title="Welcome Back"
-        subtitle="Track your active applications and monitor your job search progress."
-        imageSrc={loginBg}
-        imageAlt="Dashboard banner"
-        icon={<Briefcase size={20} className="text-white/70" />}
-      />
       <section>
         <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <Briefcase className="text-blue-600" size={24}/> Active Applications
@@ -1468,12 +1460,17 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
     <div className="min-h-screen bg-slate-100 pb-20 pt-8">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
         
-        {/* Header Section */}
-        <header className="mb-8">
-            <p className="section-label mb-1">Job Seeker</p>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">My Dashboard</h1>
-            <p className="text-slate-500 mt-1 text-sm">Manage your career journey, applications, and profile.</p>
-        </header>
+        {/* Banner */}
+        <div className="mb-8">
+          <HeroBanner
+            badge="My Dashboard"
+            title="Job Seeker My Dashboard"
+            subtitle="Manage your career journey, applications, and profile."
+            imageSrc={loginBg}
+            imageAlt="Dashboard banner"
+            icon={<LayoutDashboard size={20} className="text-white/70" />}
+          />
+        </div>
 
         {isIdInvalid && (
           <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 animate-in fade-in duration-200">

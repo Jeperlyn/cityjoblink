@@ -2349,4 +2349,34 @@ class FeatureController extends Controller
             ], 500);
         }
     }
+
+    // --- Admin: Create Training ---
+    public function adminCreateTraining(Request $request)
+    {
+        $data = $request->validate([
+            'title'       => 'required|string|max:255',
+            'provider'    => 'required|string|max:255',
+            'type'        => 'required|string|max:100',
+            'description' => 'nullable|string',
+            'slots'       => 'required|integer|min:1',
+            'start_date'  => 'required|date',
+            'end_date'    => 'required|date|after_or_equal:start_date',
+        ]);
+
+        $id = \DB::table('trainings')->insertGetId(array_merge($data, [
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]));
+
+        return response()->json(['status' => 'success', 'id' => $id]);
+    }
+
+    // --- Admin: Delete Training ---
+    public function adminDeleteTraining($id)
+    {
+        \DB::table('training_registrations')->where('training_id', $id)->delete();
+        \DB::table('trainings')->where('id', $id)->delete();
+
+        return response()->json(['status' => 'success']);
+    }
 }

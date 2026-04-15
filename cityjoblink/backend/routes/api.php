@@ -48,6 +48,8 @@ Route::get('/admin/employers', [FeatureController::class, 'adminEmployers']);
 Route::patch('/admin/employers/review', [FeatureController::class, 'reviewEmployer']);
 Route::get('/admin/seekers', [FeatureController::class, 'adminSeekers']);
 Route::patch('/admin/seekers/review', [FeatureController::class, 'reviewSeekerId']);
+Route::post('/admin/trainings', [FeatureController::class, 'adminCreateTraining']);
+Route::delete('/admin/trainings/{id}', [FeatureController::class, 'adminDeleteTraining']);
 Route::post('/employer/jobs', [EmployerController::class, 'storeJob']);
 
 // --- Notifications & Pulse ---

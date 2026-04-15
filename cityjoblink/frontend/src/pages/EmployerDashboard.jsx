@@ -8,6 +8,14 @@ import {
     Target, ArrowRight, LayoutGrid, List, XCircle, Info, Users
 } from 'lucide-react';
 import { API_BASE, buildBackendUrl } from '../lib/apiBase';
+
+const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+        month: 'long', day: 'numeric', year: 'numeric',
+    });
+};
 import { EDUCATION_MINIMUM_OPTIONS, normalizeMinimumEducationRequirement } from '../lib/educationLevels';
 
 const JOB_LOCATION_GROUPS = [
@@ -1431,7 +1439,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                 {fair.date && (
                                                     <div className="flex items-center gap-2">
                                                         <Calendar size={15} className="text-gray-400" />
-                                                        <span className="font-medium">{fair.date}</span>
+                                                        <span className="font-medium">{formatDate(fair.date)}</span>
                                                         {fair.time && <span className="text-gray-400">· {fair.time}</span>}
                                                     </div>
                                                 )}

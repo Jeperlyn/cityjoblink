@@ -11,6 +11,14 @@ import {
   Briefcase,
 } from 'lucide-react';
 import loginBg from '../assets/img/login.jpg';
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric',
+  });
+};
 import HeroBanner from '../components/ui/HeroBanner';
 import BaseCard from '../components/ui/BaseCard';
 import EmptyState from '../components/ui/EmptyState';
@@ -102,7 +110,7 @@ export const PublicListings = ({ type, data, onRegister, user }) => (
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-1.5">
                       <Calendar size={14} className="text-qc-blue" />
-                      <span>{item.date}</span>
+                      <span>{formatDate(item.date)}</span>
                     </div>
                     {item.time && (
                       <div className="flex items-center gap-1.5">
@@ -156,6 +164,27 @@ export const PublicListings = ({ type, data, onRegister, user }) => (
                         className="w-full bg-qc-gold text-black font-bold py-2.5 px-4 rounded-xl hover:brightness-95 active:scale-[0.98] transition-all text-sm shadow-sm"
                       >
                         Attend This Job Fair
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {type === 'trainings' && (
+                  <div className="mt-auto pt-1">
+                    {isRegistered ? (
+                      <div className="w-full flex items-center justify-center gap-2 bg-emerald-50 text-emerald-700 font-bold py-2.5 px-4 rounded-xl border border-emerald-200 text-sm">
+                        <CheckCircle size={15} /> Enrolled
+                      </div>
+                    ) : item.slots === 0 ? (
+                      <div className="w-full flex items-center justify-center bg-gray-100 text-gray-400 font-bold py-2.5 px-4 rounded-xl border border-gray-200 text-sm cursor-not-allowed">
+                        No Slots Available
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => onRegister && onRegister(item.id)}
+                        className="w-full bg-qc-blue text-white font-bold py-2.5 px-4 rounded-xl hover:brightness-110 active:scale-[0.98] transition-all text-sm shadow-sm"
+                      >
+                        Register for Free
                       </button>
                     )}
                   </div>

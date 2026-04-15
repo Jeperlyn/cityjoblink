@@ -1514,6 +1514,40 @@ const App = () => {
         }
     };
 
+    const handleAddTraining = async (trainingData) => {
+        try {
+            const response = await fetch(`${API_BASE}/admin/trainings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify(trainingData),
+            });
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') throw new Error(data?.message || 'Failed to create training.');
+            const updated = await fetchTrainings();
+            setTrainings(updated);
+            return true;
+        } catch (error) {
+            console.error('Training create error:', error);
+            throw error;
+        }
+    };
+
+    const handleDeleteTraining = async (trainingId) => {
+        try {
+            const response = await fetch(`${API_BASE}/admin/trainings/${trainingId}`, {
+                method: 'DELETE',
+                headers: { Accept: 'application/json' },
+            });
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') throw new Error(data?.message || 'Failed to delete training.');
+            setTrainings(prev => prev.filter(t => t.id !== trainingId));
+            return true;
+        } catch (error) {
+            console.error('Training delete error:', error);
+            throw error;
+        }
+    };
+
     const renderContent = () => {
         if (currentView === 'home') return <LandingPage onNavigate={handleNavigate} />;
         if (currentView === 'trainings' || currentView === 'public-trainings') {
@@ -1581,7 +1615,7 @@ const App = () => {
 
         if (currentView === 'employer-dash') return <EmployerDashboard profile={user} jobs={jobs} applications={applications} seekers={employerSeekers} onPostJob={handlePostJob} onUpdateJob={handleUpdateJob} onUpdateStatus={handleUpdateAppStatus} onUpdateProfile={(u)=>setUser(normalizeUserProfile(u))} onUploadDocs={handleUploadEmployerDocs} onOpenChat={(id)=>{setTargetChatId(id); setCurrentView('messages');}} notify={showToast} jobFairs={jobFairs || []} onRegisterJobFair={handleRegisterJobFair} onWithdrawJobFair={handleWithdrawJobFair} />;
 
-        if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} seekers={adminSeekers} analytics={adminAnalytics} onVerifyEmployer={handleVerifyEmployer} onReviewSeeker={handleReviewSeekerId} jobFairs={jobFairs} onAddJobFair={handleAddJobFair} notify={showToast} onMessageEmployer={handleAdminMessageEmployer} />;
+        if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} seekers={adminSeekers} analytics={adminAnalytics} onVerifyEmployer={handleVerifyEmployer} onReviewSeeker={handleReviewSeekerId} jobFairs={jobFairs} onAddJobFair={handleAddJobFair} notify={showToast} onMessageEmployer={handleAdminMessageEmployer} trainings={trainings} onAddTraining={handleAddTraining} onDeleteTraining={handleDeleteTraining} />;
 
         if (currentView === 'matchmaker') return <FindJobs jobs={jobs} recommendations={seekerRecommendations || []} onApply={handleApply} applications={applications} userId={user.id} profile={user} savedJobs={savedJobs || []} onToggleSaveJob={handleToggleSaveJob} onGoToProfile={() => { setSeekerActiveTab('profile'); setCurrentView('seeker-dash'); setTimeout(() => { document.getElementById('resume-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} cooldownMap={cooldownMap} />;
         
