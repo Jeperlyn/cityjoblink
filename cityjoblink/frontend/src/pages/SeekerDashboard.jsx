@@ -9,6 +9,8 @@ import {
 import Swal from 'sweetalert2';
 import 'sweetalert2/dist/sweetalert2.min.css';
 import { API_BASE } from '../lib/apiBase';
+import HeroBanner from '../components/ui/HeroBanner';
+import loginBg from '../assets/img/login.jpg';
 import { formatQcId338, parseQcQrPayload } from '../lib/qcQrParser';
 import { EDUCATION_MINIMUM_OPTIONS, inferEducationLevel } from '../lib/educationLevels';
 
@@ -228,7 +230,7 @@ export const JobDetailsPage = ({ job, matchData, onBack }) => {
 // 3. COMPONENT: FIND JOBS (The Job Listings)
 // =====================================================
 // ✅ FEATURE: Added savedJobs and onToggleSaveJob
-export const FindJobs = ({ jobs = [], recommendations = [], onApply, applications = [], userId, profile, onGoToProfile, savedJobs = [], onToggleSaveJob }) => {
+export const FindJobs = ({ jobs = [], recommendations = [], onApply, applications = [], userId, profile, onGoToProfile, savedJobs = [], onToggleSaveJob, cooldownMap = {} }) => {
   const [keyword, setKeyword] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
   const [selectedType, setSelectedType] = useState('');
@@ -256,6 +258,14 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6 animate-in fade-in duration-300">
+      <HeroBanner
+        badge="Job Matching"
+        title="Find Your Next Job"
+        subtitle="Browse AI-matched job opportunities tailored to your skills and location."
+        imageSrc={loginBg}
+        imageAlt="Find jobs banner"
+        icon={<Briefcase size={20} className="text-white/70" />}
+      />
       {/* Search and Filters */}
       <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
         <div className="relative">
@@ -316,11 +326,15 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
               const isSaved = savedJobs.includes(recJob.id);
               const scoreNum = Number(rec.matchScore || 0);
 
+              const recCooldownUntil = cooldownMap[recJob.id];
+              const recIsOnCooldown = !!recCooldownUntil;
+              const recCooldownDate = recIsOnCooldown ? new Date(recCooldownUntil).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : null;
+
               let btnText = 'Apply for this Position';
               let btnTitle = '';
               let btnAction = () => onApply(recJob.id);
               let btnClass = 'text-white bg-blue-600 hover:bg-blue-700';
-              
+
               if (!isVerified) {
                   btnText = 'Verification Required';
                   btnTitle = 'Click to verify your ID in your profile';
@@ -361,7 +375,15 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
                     <p className="text-sm text-gray-600 mb-5 bg-gray-50 border border-gray-100 rounded-lg p-3">{rec.matchReasons}</p>
                   )}
 
-                  {!alreadyApplied ? (
+                  {alreadyApplied ? (
+                    <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-lg text-sm font-bold border border-green-200">
+                      <CheckCircle size={16}/> Application Submitted
+                    </div>
+                  ) : recIsOnCooldown ? (
+                    <button disabled className="w-full md:w-auto px-5 py-2.5 text-sm font-bold rounded-lg bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200">
+                      Apply again on {recCooldownDate}
+                    </button>
+                  ) : (
                     <button
                       onClick={(e) => { e.stopPropagation(); btnAction(); }}
                       className={`w-full md:w-auto px-5 py-2.5 text-sm font-bold rounded-lg transition-colors ${btnClass}`}
@@ -369,10 +391,6 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
                     >
                       {btnText}
                     </button>
-                  ) : (
-                    <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-lg text-sm font-bold border border-green-200">
-                      <CheckCircle size={16}/> Application Submitted
-                    </div>
                   )}
                 </div>
               );
@@ -386,12 +404,15 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
           const isExp = expandedId === job.id;
           const hasApp = applications.some(a => a.jobId === job.id && a.seekerId === userId);
           const isSaved = savedJobs.includes(job.id);
+          const cooldownUntil = cooldownMap[job.id];
+          const isOnCooldown = !!cooldownUntil;
+          const cooldownDate = isOnCooldown ? new Date(cooldownUntil).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : null;
 
           let btnText = 'Apply for this Position';
           let btnTitle = '';
           let btnAction = () => onApply(job.id);
           let btnClass = 'text-white bg-blue-600 hover:bg-blue-700';
-          
+
           if (!isVerified) {
               btnText = 'Verification Required';
               btnTitle = 'Click to verify your ID in your profile';
@@ -454,18 +475,22 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
 
                   <EmployerLinks job={job} compact containerClassName="mb-8" />
 
-                  {!hasApp ? (
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); btnAction(); }} 
+                  {hasApp ? (
+                    <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-xl font-bold border border-green-200">
+                      <CheckCircle size={18}/> Application Submitted
+                    </div>
+                  ) : isOnCooldown ? (
+                    <button disabled className="w-full md:w-auto px-8 py-3 rounded-xl font-bold bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200">
+                      Apply again on {cooldownDate}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); btnAction(); }}
                       className={`w-full md:w-auto px-8 py-3 rounded-xl font-bold transition-colors shadow-sm ${btnClass}`}
                       title={btnTitle}
                     >
                       {btnText}
                     </button>
-                  ) : (
-                    <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-xl font-bold border border-green-200">
-                      <CheckCircle size={18}/> Application Submitted
-                    </div>
                   )}
                 </div>
               )}
@@ -552,6 +577,14 @@ export const DashboardOverview = ({ applications = [], jobs = [], onViewJob, onS
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
+      <HeroBanner
+        badge="My Dashboard"
+        title="Welcome Back"
+        subtitle="Track your active applications and monitor your job search progress."
+        imageSrc={loginBg}
+        imageAlt="Dashboard banner"
+        icon={<Briefcase size={20} className="text-white/70" />}
+      />
       <section>
         <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
           <Briefcase className="text-blue-600" size={24}/> Active Applications
@@ -694,7 +727,7 @@ export const DashboardOverview = ({ applications = [], jobs = [], onViewJob, onS
 // =====================================================
 
 // ✅ NEW FEATURE: Saved Jobs View Component
-export const MySavedJobs = ({ jobs = [], savedJobs = [], applications = [], userId, profile, onApply, onToggleSaveJob, onGoToProfile }) => {
+export const MySavedJobs = ({ jobs = [], savedJobs = [], applications = [], userId, profile, onApply, onToggleSaveJob, onGoToProfile, cooldownMap = {} }) => {
   const [expandedId, setExpandedId] = useState(null);
   
   const idVerificationStatus = profile?.idVerificationStatus || profile?.id_verification_status;
@@ -722,12 +755,15 @@ export const MySavedJobs = ({ jobs = [], savedJobs = [], applications = [], user
             {mySavedData.map(job => {
               const isExp = expandedId === job.id;
               const hasApp = applications.some(a => a.jobId === job.id && a.seekerId === userId);
+              const cooldownUntil = cooldownMap[job.id];
+              const isOnCooldown = !!cooldownUntil;
+              const cooldownDate = isOnCooldown ? new Date(cooldownUntil).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : null;
 
               let btnText = 'Apply for this Position';
               let btnTitle = '';
               let btnAction = () => onApply(job.id);
               let btnClass = 'text-white bg-blue-600 hover:bg-blue-700';
-              
+
               if (!isVerified) {
                   btnText = 'Verification Required';
                   btnTitle = 'Click to verify your ID in your profile';
@@ -790,18 +826,22 @@ export const MySavedJobs = ({ jobs = [], savedJobs = [], applications = [], user
 
                       <EmployerLinks job={job} compact containerClassName="mb-8" />
 
-                      {!hasApp ? (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); btnAction(); }} 
+                      {hasApp ? (
+                        <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-xl font-bold border border-green-200">
+                          <CheckCircle size={18}/> Application Submitted
+                        </div>
+                      ) : isOnCooldown ? (
+                        <button disabled className="w-full md:w-auto px-8 py-3 rounded-xl font-bold bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200">
+                          Apply again on {cooldownDate}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); btnAction(); }}
                           className={`w-full md:w-auto px-8 py-3 rounded-xl font-bold transition-colors shadow-sm ${btnClass}`}
                           title={btnTitle}
                         >
                           {btnText}
                         </button>
-                      ) : (
-                        <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-xl font-bold border border-green-200">
-                          <CheckCircle size={18}/> Application Submitted
-                        </div>
                       )}
                     </div>
                   )}
@@ -986,7 +1026,7 @@ const toastMsg = (title, icon = 'success') => {
   });
 };
 
-const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], savedJobs = [], initialTab, onViewJob, onNavigate, onUpdateProfile, onWithdrawTraining, onSubmitEmployerFeedback, onToggleSaveJob, onApply, notify, onWithdrawJobFair }) => {
+const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], savedJobs = [], initialTab, onViewJob, onNavigate, onUpdateProfile, onWithdrawTraining, onSubmitEmployerFeedback, onToggleSaveJob, onApply, notify, onWithdrawJobFair, cooldownMap = {} }) => {
   const [activeTab, setActiveTab] = useState(initialTab || 'overview');
   const [resumeFile, setResumeFile] = useState(null);
   const [idDocumentFile, setIdDocumentFile] = useState(null);
@@ -1191,8 +1231,16 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
   };
 
   const handleRemoveResume = async () => {
-    const confirmed = window.confirm('Are you sure you want to delete your uploaded resume? This will remove the stored PDF and parsed data.');
-    if (!confirmed) {
+    const result = await Swal.fire({
+      title: 'Delete Resume?',
+      text: 'This will remove the stored PDF and parsed data. This cannot be undone.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, delete it',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#dc2626',
+    });
+    if (!result.isConfirmed) {
       return;
     }
 
@@ -1460,7 +1508,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
 
         {activeTab === 'overview' && <DashboardOverview applications={applications} jobs={jobs} onViewJob={onViewJob} onSubmitEmployerFeedback={onSubmitEmployerFeedback} />}
         {/* ✅ FEATURE: Render the new MySavedJobs tab */}
-        {activeTab === 'saved jobs' && <MySavedJobs jobs={jobs} savedJobs={savedJobs} applications={applications} profile={profile} userId={profile?.id} onApply={onApply} onToggleSaveJob={onToggleSaveJob} onGoToProfile={handleRedirectToProfile} />}
+        {activeTab === 'saved jobs' && <MySavedJobs jobs={jobs} savedJobs={savedJobs} applications={applications} profile={profile} userId={profile?.id} onApply={onApply} onToggleSaveJob={onToggleSaveJob} onGoToProfile={handleRedirectToProfile} cooldownMap={cooldownMap} />}
         {activeTab === 'trainings' && <MyTrainings trainings={trainings} profile={profile} onWithdrawTraining={handleWithdrawTraining} />}
         {activeTab === 'job fairs' && <MyJobFairs jobFairs={jobFairs} profile={profile} onWithdrawJobFair={handleWithdrawJobFair} />}
         
@@ -1665,8 +1713,9 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                   </div>
 
                   {isPriorityVerified && (
-                    <div className="mb-4 bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-700 font-semibold">
-                      Priority verification is active on your account.
+                    <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-800">
+                      <p className="font-black uppercase tracking-wide text-[10px] text-blue-600 mb-1">QC Priority Active</p>
+                      <p className="font-semibold">Your applications appear first in employer applicant lists as a verified QC resident.</p>
                     </div>
                   )}
 

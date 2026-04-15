@@ -42,6 +42,7 @@ return [
         'basic_auth_user' => env('N8N_BASIC_AUTH_USER'),
         'basic_auth_password' => env('N8N_BASIC_AUTH_PASSWORD'),
         'timeout_seconds' => env('N8N_MATCH_TIMEOUT_SECONDS', 10),
+        'id_verification_callback_secret' => env('N8N_SEEKER_ID_VERIFICATION_CALLBACK_SECRET'),
     ],
 
 ];

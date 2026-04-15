@@ -181,6 +181,8 @@ const mapBackendEmployerApplication = (app) => ({
     missingSkills: app.missing_skills || [],
     educationMatch: app.education_match,
     matchReasons: app.match_reasons || '',
+    seekerIsPriorityVerified: !!app.seeker_is_priority_verified,
+    seekerIsQcResident: !!app.seeker_is_qc_resident,
 });
 
 const mapBackendRecommendation = (item) => ({
@@ -334,9 +336,10 @@ const App = () => {
         return 'home';
     });
 
-    const [previousView, setPreviousView] = useState('home'); 
+    const [previousView, setPreviousView] = useState('home');
     const [loginError, setLoginError] = useState('');
-    const [seekerActiveTab, setSeekerActiveTab] = useState('overview'); 
+    const [seekerActiveTab, setSeekerActiveTab] = useState('overview');
+    const [isDashboardLoading, setIsDashboardLoading] = useState(false);
 
     const [users, setUsers] = useState(() => JSON.parse(localStorage.getItem('cjl_users')) || INITIAL_USERS);
     const [jobs, setJobs] = useState(() => JSON.parse(localStorage.getItem('cjl_jobs')) || INITIAL_JOBS);
@@ -780,6 +783,7 @@ const App = () => {
         if (!user || user.role !== 'Seeker' || !user.email) return;
 
         const bootstrap = async () => {
+            setIsDashboardLoading(true);
             try {
                 const [profileData, jobsData, trainingsData, applicationsData, notificationsData, recommendationsData, messagesData, savedJobsData] = await Promise.all([
                     fetchSeekerProfile(user.email),
@@ -803,6 +807,8 @@ const App = () => {
                 setSavedJobs(savedJobsData);
             } catch (error) {
                 console.error('Seeker bootstrap failed:', error);
+            } finally {
+                setIsDashboardLoading(false);
             }
         };
 
@@ -828,10 +834,14 @@ const App = () => {
         if (!user || user.role !== 'Admin') return;
 
         const bootstrapAdmin = async () => {
-            const { errors } = await refreshAdminData();
-
-            if (errors.length > 0) {
-                console.error('Admin bootstrap partial failure:', errors);
+            setIsDashboardLoading(true);
+            try {
+                const { errors } = await refreshAdminData();
+                if (errors.length > 0) {
+                    console.error('Admin bootstrap partial failure:', errors);
+                }
+            } finally {
+                setIsDashboardLoading(false);
             }
         };
 
@@ -842,6 +852,7 @@ const App = () => {
         if (!user || user.role !== 'Employer' || !user.email) return;
 
         const bootstrapEmployer = async () => {
+            setIsDashboardLoading(true);
             try {
                 const [jobsData, employerApplicationsData, messagesData, notificationsData] = await Promise.all([
                     fetch(`${API_BASE}/jobs?include_closed=1`, { headers: { Accept: 'application/json' } })
@@ -862,6 +873,8 @@ const App = () => {
                 setNotifications(notificationsData);
             } catch (error) {
                 console.error('Employer bootstrap failed:', error);
+            } finally {
+                setIsDashboardLoading(false);
             }
         };
 
@@ -1290,6 +1303,18 @@ const App = () => {
         }
     };
 
+    const handleAdminMessageEmployer = async (toUserId, content) => {
+        const response = await fetch(`${API_BASE}/messages/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ email: user.email, to_user_id: toUserId, content }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') {
+            throw new Error(data?.message || 'Failed to send message.');
+        }
+    };
+
     const handleReviewSeekerId = async (seekerId, approved, reason = '') => {
         try {
             const response = await fetch(`${API_BASE}/admin/seekers/review`, {
@@ -1500,15 +1525,41 @@ const App = () => {
 
         if (!user || currentView === 'login') return <LoginScreen onLogin={handleLogin} loginError={loginError} setLoginError={setLoginError} />;
 
+        if (isDashboardLoading) {
+            return (
+                <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center gap-4">
+                    <div className="w-10 h-10 border-4 border-qc-blue border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm font-semibold text-slate-500">Loading your dashboard...</p>
+                </div>
+            );
+        }
+
+        // Compute 6-month application cooldown map for seekers
+        const cooldownMap = {};
+        if (user?.role === 'Seeker') {
+            const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
+            (applications || []).forEach(app => {
+                if (app.status === 'Declined' && app.declinedAt) {
+                    const declinedTime = new Date(app.declinedAt).getTime();
+                    const cooldownUntil = declinedTime + SIX_MONTHS_MS;
+                    if (cooldownUntil > Date.now()) {
+                        if (!cooldownMap[app.jobId] || cooldownUntil > cooldownMap[app.jobId]) {
+                            cooldownMap[app.jobId] = cooldownUntil;
+                        }
+                    }
+                }
+            });
+        }
+
         if (currentView === 'seeker-dash') return (
-            <SeekerDashboard 
-                profile={user} 
-                applications={applications || []} 
-                jobs={jobs || []} 
+            <SeekerDashboard
+                profile={user}
+                applications={applications || []}
+                jobs={jobs || []}
                 trainings={trainings || []}
                 jobFairs={jobFairs || []}
                 savedJobs={savedJobs || []}
-                initialTab={seekerActiveTab} 
+                initialTab={seekerActiveTab}
                 onNavigate={setCurrentView}
                 onViewJob={(j) => handleViewJobDetails(j, 'seeker-dash')}
                 onApply={handleApply}
@@ -1524,14 +1575,15 @@ const App = () => {
                     localStorage.setItem('user', JSON.stringify(normalized));
                 }}
                 notify={showToast}
+                cooldownMap={cooldownMap}
             />
         );
 
         if (currentView === 'employer-dash') return <EmployerDashboard profile={user} jobs={jobs} applications={applications} seekers={employerSeekers} onPostJob={handlePostJob} onUpdateJob={handleUpdateJob} onUpdateStatus={handleUpdateAppStatus} onUpdateProfile={(u)=>setUser(normalizeUserProfile(u))} onUploadDocs={handleUploadEmployerDocs} onOpenChat={(id)=>{setTargetChatId(id); setCurrentView('messages');}} notify={showToast} jobFairs={jobFairs || []} onRegisterJobFair={handleRegisterJobFair} onWithdrawJobFair={handleWithdrawJobFair} />;
-        
-        if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} seekers={adminSeekers} analytics={adminAnalytics} onVerifyEmployer={handleVerifyEmployer} onReviewSeeker={handleReviewSeekerId} jobFairs={jobFairs} onAddJobFair={handleAddJobFair} notify={showToast} />;
-        
-        if (currentView === 'matchmaker') return <FindJobs jobs={jobs} recommendations={seekerRecommendations || []} onApply={handleApply} applications={applications} userId={user.id} profile={user} savedJobs={savedJobs || []} onToggleSaveJob={handleToggleSaveJob} onGoToProfile={() => { setSeekerActiveTab('profile'); setCurrentView('seeker-dash'); setTimeout(() => { document.getElementById('resume-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} />;
+
+        if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} seekers={adminSeekers} analytics={adminAnalytics} onVerifyEmployer={handleVerifyEmployer} onReviewSeeker={handleReviewSeekerId} jobFairs={jobFairs} onAddJobFair={handleAddJobFair} notify={showToast} onMessageEmployer={handleAdminMessageEmployer} />;
+
+        if (currentView === 'matchmaker') return <FindJobs jobs={jobs} recommendations={seekerRecommendations || []} onApply={handleApply} applications={applications} userId={user.id} profile={user} savedJobs={savedJobs || []} onToggleSaveJob={handleToggleSaveJob} onGoToProfile={() => { setSeekerActiveTab('profile'); setCurrentView('seeker-dash'); setTimeout(() => { document.getElementById('resume-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} cooldownMap={cooldownMap} />;
         
         if (currentView === 'job-details') {
             const matchInfo = selectedJobMatchData || calculateMatchScore(selectedJob?.requiredSkills || [], user?.skills || []);

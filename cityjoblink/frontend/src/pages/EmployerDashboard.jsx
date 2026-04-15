@@ -236,7 +236,13 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                 const fitPass = Number(app.fitScore ?? 0) >= minFit;
                 return statusPass && fitPass;
             })
-            .sort((a, b) => (Number(b.fitScore) || 0) - (Number(a.fitScore) || 0));
+            .sort((a, b) => {
+                // Priority-verified QC seekers float to the top
+                const priorityDiff = (b.seekerIsPriorityVerified ? 1 : 0) - (a.seekerIsPriorityVerified ? 1 : 0);
+                if (priorityDiff !== 0) return priorityDiff;
+                // Within each group, sort by fit score
+                return (Number(b.fitScore) || 0) - (Number(a.fitScore) || 0);
+            });
     };
 
     const jobsToDisplay = useMemo(() => {
@@ -1025,15 +1031,20 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                                             const isTargeted = String(targetApplicantId) === String(app.id);
                                                                             
                                                                             return (
-                                                                                <div key={app.id} ref={el => applicantRefs.current[app.id] = el} className={`bg-white p-4 rounded-xl border shadow-sm transition-all duration-300 ${isTargeted ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:border-blue-300'}`}>
+                                                                                <div key={app.id} ref={el => applicantRefs.current[app.id] = el} className={`bg-white p-4 rounded-xl border shadow-sm transition-all duration-300 ${isTargeted ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:border-blue-300'} ${app.seekerIsPriorityVerified ? 'border-l-2 border-l-blue-500' : ''}`}>
                                                                                     <div className="flex items-center gap-3 mb-3">
                                                                                         <div className={`w-10 h-10 rounded-full flex shrink-0 items-center justify-center font-bold ${isHighMatch ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
                                                                                             {applicantName?.charAt(0) || '?'}
                                                                                         </div>
-                                                                                        <div className="overflow-hidden">
+                                                                                        <div className="overflow-hidden flex-1 min-w-0">
                                                                                             <p className="font-bold text-sm text-gray-900 truncate">{applicantName}</p>
                                                                                             <p className="text-[10px] text-gray-500 mt-0.5">{app.date}</p>
                                                                                         </div>
+                                                                                        {app.seekerIsPriorityVerified && (
+                                                                                            <span className="shrink-0 inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-700 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full">
+                                                                                                QC
+                                                                                            </span>
+                                                                                        )}
                                                                                     </div>
                                                                                     
                                                                                     {/* Match Insight Button (Kanban) */}
@@ -1100,8 +1111,9 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                                         {applicantName?.charAt(0) || '?'}
                                                                     </div>
                                                                     <div>
-                                                                        <p className="font-bold text-sm flex items-center gap-2">
+                                                                        <p className="font-bold text-sm flex items-center gap-2 flex-wrap">
                                                                             {applicantName}
+                                                                            {app.seekerIsPriorityVerified && <span className="bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-wide">QC Verified</span>}
                                                                             {isHighMatch && !isDeclined && <span className="bg-emerald-600 text-white text-[8px] px-1.5 py-0.5 rounded font-black uppercase">Best Fit</span>}
                                                                             {isTargeted && <span className="animate-pulse bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded font-black uppercase">Found!</span>}
                                                                         </p>
@@ -1184,13 +1196,27 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                         onChange={e => setEditProfileData({ ...editProfileData, industry: e.target.value })}
                                     >
                                         <option value="">Choose Industry</option>
-                                        <option value="BPO / Call Center">BPO / Call Center</option>
-                                        <option value="IT & Software">IT & Software</option>
-                                        <option value="Healthcare">Healthcare</option>
-                                        <option value="Retail & Sales">Retail & Sales</option>
-                                        <option value="Manufacturing">Manufacturing</option>
-                                        <option value="Construction">Construction</option>
-                                        <option value="Finance">Finance</option>
+                                        <option value="Agriculture, Forestry And Fishing (A)">Agriculture, Forestry And Fishing (A)</option>
+                                        <option value="Mining And Quarrying (B)">Mining And Quarrying (B)</option>
+                                        <option value="Manufacturing (C)">Manufacturing (C)</option>
+                                        <option value="Electricity, Gas, Steam And Air Conditioning Supply (D)">Electricity, Gas, Steam And Air Conditioning Supply (D)</option>
+                                        <option value="Water Supply; Sewerage, Waste Management And Remediation Activities (E)">Water Supply; Sewerage, Waste Management And Remediation Activities (E)</option>
+                                        <option value="Construction (F)">Construction (F)</option>
+                                        <option value="Wholesale and Retail Trade; Repair of Motor Vehicles and Motorcycles (G)">Wholesale and Retail Trade; Repair of Motor Vehicles and Motorcycles (G)</option>
+                                        <option value="Transportation and Storage (H)">Transportation and Storage (H)</option>
+                                        <option value="Accommodation and Food Service Activities (I)">Accommodation and Food Service Activities (I)</option>
+                                        <option value="Information and Communication (J)">Information and Communication (J)</option>
+                                        <option value="Financial and Insurance Activities (K)">Financial and Insurance Activities (K)</option>
+                                        <option value="Real Estate Activities (L)">Real Estate Activities (L)</option>
+                                        <option value="Professional, Scientific and Technical Activities (M)">Professional, Scientific and Technical Activities (M)</option>
+                                        <option value="Administrative and Support Service Activities (N)">Administrative and Support Service Activities (N)</option>
+                                        <option value="Public Administration and Defense; Compulsory Social Security (O)">Public Administration and Defense; Compulsory Social Security (O)</option>
+                                        <option value="Education (P)">Education (P)</option>
+                                        <option value="Human Health and Social Work Activities (Q)">Human Health and Social Work Activities (Q)</option>
+                                        <option value="Arts, Entertainment and Recreation (R)">Arts, Entertainment and Recreation (R)</option>
+                                        <option value="Other Service Activities (S)">Other Service Activities (S)</option>
+                                        <option value="Activities of Households as Employers; Undifferentiated Goods-and Services-Producing Activities of Households for Own Use (T)">Activities of Households as Employers; Undifferentiated Goods-and Services-Producing Activities of Households for Own Use (T)</option>
+                                        <option value="Activities of Extra-Territorial Organizations and Bodies (U)">Activities of Extra-Territorial Organizations and Bodies (U)</option>
                                     </select>
                                 </div>
                             </div>

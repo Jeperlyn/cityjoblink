@@ -713,13 +713,27 @@ const handleSubmit = async (e) => {
                                 <input required className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="Company Name" value={formData.companyName} onChange={e => setFormData({...formData, companyName: e.target.value})} />
                                 <select className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 text-sm" value={formData.industry} onChange={e => setFormData({...formData, industry: e.target.value})}>
                                     <option value="">Select Industry</option>
-                                    <option>BPO / Call Center</option>
-                                    <option>IT & Software</option>
-                                    <option>Healthcare</option>
-                                    <option>Construction</option>
-                                    <option>Finance</option>
-                                    <option>Retail & Sales</option>
-                                    <option>Manufacturing</option>
+                                    <option>Agriculture, Forestry And Fishing (A)</option>
+                                    <option>Mining And Quarrying (B)</option>
+                                    <option>Manufacturing (C)</option>
+                                    <option>Electricity, Gas, Steam And Air Conditioning Supply (D)</option>
+                                    <option>Water Supply; Sewerage, Waste Management And Remediation Activities (E)</option>
+                                    <option>Construction (F)</option>
+                                    <option>Wholesale and Retail Trade; Repair of Motor Vehicles and Motorcycles (G)</option>
+                                    <option>Transportation and Storage (H)</option>
+                                    <option>Accommodation and Food Service Activities (I)</option>
+                                    <option>Information and Communication (J)</option>
+                                    <option>Financial and Insurance Activities (K)</option>
+                                    <option>Real Estate Activities (L)</option>
+                                    <option>Professional, Scientific and Technical Activities (M)</option>
+                                    <option>Administrative and Support Service Activities (N)</option>
+                                    <option>Public Administration and Defense; Compulsory Social Security (O)</option>
+                                    <option>Education (P)</option>
+                                    <option>Human Health and Social Work Activities (Q)</option>
+                                    <option>Arts, Entertainment and Recreation (R)</option>
+                                    <option>Other Service Activities (S)</option>
+                                    <option>Activities of Households as Employers; Undifferentiated Goods-and Services-Producing Activities of Households for Own Use (T)</option>
+                                    <option>Activities of Extra-Territorial Organizations and Bodies (U)</option>
                                 </select>
                                 <input required className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="Business Address" value={formData.companyAddress} onChange={e => setFormData({...formData, companyAddress: e.target.value})} />
                                 <p className="text-xs text-gray-500 font-medium leading-relaxed">
