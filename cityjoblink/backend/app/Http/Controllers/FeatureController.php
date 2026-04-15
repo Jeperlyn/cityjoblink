@@ -118,7 +118,7 @@ class FeatureController extends Controller
     public function getSavedJobs(Request $request)
     {
         $request->validate(['email' => ['required', 'email']]);
-        
+
         $seeker = User::where('email', $request->email)->first();
         if (!$seeker) {
             return response()->json(['status' => 'error', 'message' => 'User not found.'], 404);
@@ -169,8 +169,8 @@ class FeatureController extends Controller
                     ->delete();
 
                 return response()->json([
-                    'status' => 'success', 
-                    'message' => 'Job removed from saved list.', 
+                    'status' => 'success',
+                    'message' => 'Job removed from saved list.',
                     'is_saved' => false
                 ]);
             } else {
@@ -182,8 +182,8 @@ class FeatureController extends Controller
                 ]);
 
                 return response()->json([
-                    'status' => 'success', 
-                    'message' => 'Job saved successfully.', 
+                    'status' => 'success',
+                    'message' => 'Job saved successfully.',
                     'is_saved' => true
                 ]);
             }
@@ -210,8 +210,8 @@ class FeatureController extends Controller
         if ($seeker->id_verification_status !== 'verified') {
             $statusMessage = match ($seeker->id_verification_status) {
                 'manual_review' => 'Your account is currently under review by an Admin. You cannot apply for jobs until your ID is verified.',
-                'rejected'      => 'Your ID verification was rejected. Please upload a valid ID to apply for jobs.',
-                default         => 'You must verify your identity by uploading a valid ID before applying for jobs.',
+                'rejected' => 'Your ID verification was rejected. Please upload a valid ID to apply for jobs.',
+                default => 'You must verify your identity by uploading a valid ID before applying for jobs.',
             };
 
             return response()->json([
@@ -547,9 +547,9 @@ class FeatureController extends Controller
             $authUser = config('services.n8n.basic_auth_user');
             $authPassword = config('services.n8n.basic_auth_password');
 
-        if ($authUser !== null && $authPassword !== null && $authUser !== '' && $authPassword !== '') {
-            $request = $request->withBasicAuth((string) $authUser, (string) $authPassword);
-        }
+            if ($authUser !== null && $authPassword !== null && $authUser !== '' && $authPassword !== '') {
+                $request = $request->withBasicAuth((string) $authUser, (string) $authPassword);
+            }
 
             $skillsRequired = json_decode((string) ($job->required_skills ?? '[]'), true) ?: [];
 
@@ -598,7 +598,7 @@ class FeatureController extends Controller
             'salary_max' => ['nullable', 'integer', 'min:0'],
             'educational_attainment_required' => ['nullable', 'string', 'max:255'],
             'industry' => ['nullable', 'string', 'max:255'],
-            'status' => ['nullable', 'string', 'in:Open,Closed,Paused'], 
+            'status' => ['nullable', 'string', 'in:Open,Closed,Paused'],
         ]);
 
         $employer = User::where('email', $request->email)->first();
@@ -875,8 +875,8 @@ class FeatureController extends Controller
                 }
 
                 return collect($companies)
-                    ->filter(fn ($company) => trim((string) $company) !== '')
-                    ->map(fn ($company) => mb_strtolower(trim((string) $company)))
+                    ->filter(fn($company) => trim((string) $company) !== '')
+                    ->map(fn($company) => mb_strtolower(trim((string) $company)))
                     ->all();
             })
             ->countBy();
@@ -984,16 +984,16 @@ class FeatureController extends Controller
             'genderBreakdown' => $genderBreakdown,
             'residencyBreakdown' => $residencyBreakdown,
             'applicationStageBreakdown' => collect(['Pending', 'Interview', 'Hired', 'Declined'])
-                ->mapWithKeys(fn ($status) => [$status => (int) ($stageCounts[$status] ?? 0)])
+                ->mapWithKeys(fn($status) => [$status => (int) ($stageCounts[$status] ?? 0)])
                 ->all(),
             'hiredByResidency' => [
                 'QC' => (int) $hiredSeekers->where('is_qc_resident', true)->count(),
                 'Non-QC' => (int) $hiredSeekers->where('is_qc_resident', false)->count(),
             ],
             'hiredByGender' => [
-                'Male' => (int) $hiredSeekers->filter(fn ($seeker) => in_array(mb_strtolower(trim((string) ($seeker->id_extracted_gender ?: $seeker->gender ?: ''))), ['male', 'm'], true))->count(),
-                'Female' => (int) $hiredSeekers->filter(fn ($seeker) => in_array(mb_strtolower(trim((string) ($seeker->id_extracted_gender ?: $seeker->gender ?: ''))), ['female', 'f'], true))->count(),
-                'Other/Unspecified' => (int) $hiredSeekers->filter(fn ($seeker) => !in_array(mb_strtolower(trim((string) ($seeker->id_extracted_gender ?: $seeker->gender ?: ''))), ['male', 'm', 'female', 'f'], true))->count(),
+                'Male' => (int) $hiredSeekers->filter(fn($seeker) => in_array(mb_strtolower(trim((string) ($seeker->id_extracted_gender ?: $seeker->gender ?: ''))), ['male', 'm'], true))->count(),
+                'Female' => (int) $hiredSeekers->filter(fn($seeker) => in_array(mb_strtolower(trim((string) ($seeker->id_extracted_gender ?: $seeker->gender ?: ''))), ['female', 'f'], true))->count(),
+                'Other/Unspecified' => (int) $hiredSeekers->filter(fn($seeker) => !in_array(mb_strtolower(trim((string) ($seeker->id_extracted_gender ?: $seeker->gender ?: ''))), ['male', 'm', 'female', 'f'], true))->count(),
             ],
         ];
 
@@ -1173,7 +1173,7 @@ class FeatureController extends Controller
         $trainings = $trainings->map(function ($training) use ($registeredByTraining) {
             $registeredUserIds = ($registeredByTraining->get($training->id) ?? collect())
                 ->pluck('user_id')
-                ->map(fn ($id) => (int) $id)
+                ->map(fn($id) => (int) $id)
                 ->values()
                 ->all();
 
@@ -1936,8 +1936,8 @@ class FeatureController extends Controller
         $userSkills = $this->toArraySkills($user->parsed_skill ?? null);
         $requiredSkills = $this->toArraySkills($job->required_skills ?? null);
 
-        $normalizedUserSkills = array_map(fn ($s) => mb_strtolower(trim((string) $s)), $userSkills);
-        $normalizedRequired = array_map(fn ($s) => mb_strtolower(trim((string) $s)), $requiredSkills);
+        $normalizedUserSkills = array_map(fn($s) => mb_strtolower(trim((string) $s)), $userSkills);
+        $normalizedRequired = array_map(fn($s) => mb_strtolower(trim((string) $s)), $requiredSkills);
 
         $matches = [];
         foreach ($normalizedRequired as $index => $requiredSkill) {
@@ -2097,13 +2097,13 @@ class FeatureController extends Controller
     private function toArraySkills(mixed $value): array
     {
         if (is_array($value)) {
-            return array_values(array_filter($value, fn ($item) => is_string($item) || is_numeric($item)));
+            return array_values(array_filter($value, fn($item) => is_string($item) || is_numeric($item)));
         }
 
         if (is_string($value) && $value !== '') {
             $decoded = json_decode($value, true);
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                return array_values(array_filter($decoded, fn ($item) => is_string($item) || is_numeric($item)));
+                return array_values(array_filter($decoded, fn($item) => is_string($item) || is_numeric($item)));
             }
         }
 
@@ -2120,7 +2120,7 @@ class FeatureController extends Controller
     private function shortenJobTitle(string $title, int $maxLength = 25): string
     {
         $title = trim($title);
-        
+
         // Abbreviate common prefixes
         $abbreviations = [
             '/^Senior /' => 'Sr. ',
@@ -2130,19 +2130,19 @@ class FeatureController extends Controller
             '/^Staff /' => 'Staff ',
             '/^Chief /' => 'Chief ',
         ];
-        
+
         foreach ($abbreviations as $pattern => $replacement) {
             if (preg_match($pattern, $title)) {
                 $title = preg_replace($pattern, $replacement, $title, 1);
                 break;
             }
         }
-        
+
         // Truncate if too long
         if (mb_strlen($title) > $maxLength) {
             return mb_substr($title, 0, $maxLength - 3) . '...';
         }
-        
+
         return $title;
     }
 
@@ -2153,7 +2153,7 @@ class FeatureController extends Controller
     private function generateNotificationContent(string $type, array $data): array
     {
         $jobTitleShort = $this->shortenJobTitle($data['job_title'] ?? 'the position');
-        
+
         return match ($type) {
             'application_submitted' => [
                 'content' => "Your application for {$jobTitleShort} was submitted. We'll review it and get back to you soon.",
@@ -2184,5 +2184,154 @@ class FeatureController extends Controller
                 'emoji' => '🔔',
             ],
         };
+    }
+
+
+
+    // Kukunin lahat ng Job Fairs
+    public function getJobFairs()
+    {
+        $jobFairs = \Illuminate\Support\Facades\DB::table('job_fairs')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($fair) {
+                $fair->highlights   = $fair->highlights ? json_decode($fair->highlights, true) : [];
+                $fair->companies    = $fair->companies  ? json_decode($fair->companies,  true) : [];
+                $fair->participants = \Illuminate\Support\Facades\DB::table('job_fair_participants')
+                    ->where('job_fair_id', $fair->id)
+                    ->pluck('user_id')
+                    ->map(fn($id) => (int) $id)
+                    ->values()
+                    ->all();
+                return $fair;
+            });
+
+        return response()->json($jobFairs);
+    }
+
+    public function joinJobFair(Request $request)
+    {
+        $request->validate([
+            'email'       => ['required', 'email'],
+            'job_fair_id' => ['required', 'integer', 'exists:job_fairs,id'],
+        ]);
+
+        $user = \App\Models\User::where('email', $request->email)->first();
+        if (!$user) return response()->json(['status' => 'error', 'message' => 'User not found.'], 404);
+
+        $already = \Illuminate\Support\Facades\DB::table('job_fair_participants')
+            ->where('job_fair_id', $request->job_fair_id)
+            ->where('user_id', $user->id)
+            ->exists();
+
+        if (!$already) {
+            \Illuminate\Support\Facades\DB::table('job_fair_participants')->insert([
+                'job_fair_id'   => $request->job_fair_id,
+                'user_id'       => $user->id,
+                'registered_at' => now(),
+                'created_at'    => now(),
+                'updated_at'    => now(),
+            ]);
+        }
+
+        // For employers: also add company name to the companies JSON column
+        if ($user->role === 'Employer') {
+            $jobFair     = \Illuminate\Support\Facades\DB::table('job_fairs')->where('id', $request->job_fair_id)->first();
+            $companyName = $user->company_name ?: $user->name;
+            $companies   = $jobFair->companies ? json_decode($jobFair->companies, true) : [];
+            if (!in_array($companyName, $companies)) {
+                $companies[] = $companyName;
+                \Illuminate\Support\Facades\DB::table('job_fairs')
+                    ->where('id', $request->job_fair_id)
+                    ->update(['companies' => json_encode($companies), 'updated_at' => now()]);
+            }
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'Successfully registered for the job fair.']);
+    }
+
+    public function leaveJobFair(Request $request)
+    {
+        $request->validate([
+            'email'       => ['required', 'email'],
+            'job_fair_id' => ['required', 'integer', 'exists:job_fairs,id'],
+        ]);
+
+        $user = \App\Models\User::where('email', $request->email)->first();
+        if (!$user) return response()->json(['status' => 'error', 'message' => 'User not found.'], 404);
+
+        $deleted = \Illuminate\Support\Facades\DB::table('job_fair_participants')
+            ->where('job_fair_id', $request->job_fair_id)
+            ->where('user_id', $user->id)
+            ->delete();
+
+        if (!$deleted) return response()->json(['status' => 'error', 'message' => 'Not registered for this job fair.'], 404);
+
+        // For employers: remove company name from the companies JSON column
+        if ($user->role === 'Employer') {
+            $jobFair     = \Illuminate\Support\Facades\DB::table('job_fairs')->where('id', $request->job_fair_id)->first();
+            $companyName = $user->company_name ?: $user->name;
+            $companies   = $jobFair->companies ? json_decode($jobFair->companies, true) : [];
+            $companies   = array_values(array_filter($companies, fn($c) => $c !== $companyName));
+            \Illuminate\Support\Facades\DB::table('job_fairs')
+                ->where('id', $request->job_fair_id)
+                ->update(['companies' => json_encode($companies), 'updated_at' => now()]);
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'Successfully withdrawn from the job fair.']);
+    }
+
+// Gagawa ng bagong Job Fair
+    public function createJobFair(Request $request)
+    {
+        try {
+            $request->validate([
+                'title' => 'required|string|max:255',
+                'date' => 'required|string|max:255',
+                'time' => 'required|string|max:255',
+                'location' => 'required|string|max:255',
+                'organizer' => 'nullable|string|max:255',
+                'description' => 'required|string',
+                'highlights' => 'nullable|string',
+                'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            ]);
+
+            $imagePath = null;
+
+            if ($request->hasFile('image')) {
+                $imagePath = $request->file('image')->store('job_fairs', 'public');
+                $imagePath = '/storage/' . $imagePath;
+            }
+
+            // I-save sa pgAdmin (job_fairs table)
+            $id = \Illuminate\Support\Facades\DB::table('job_fairs')->insertGetId([
+                'title' => $request->title,
+                'event_date' => $request->date,
+                'time' => $request->time,
+                'location' => $request->location,
+                'organizer' => $request->organizer ?? 'PESO QC & DOLE',
+                'description' => $request->description,
+                'highlights' => $request->highlights,
+                'image' => $imagePath, // Pinalitan ko muna ng 'image' imbes na 'image_url'
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $newJobFair = \Illuminate\Support\Facades\DB::table('job_fairs')->where('id', $id)->first();
+            $newJobFair->highlights = json_decode($newJobFair->highlights, true);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Job fair created successfully',
+                'job_fair' => $newJobFair
+            ]);
+
+        } catch (\Exception $e) {
+            // KAPAG NAG-ERROR, IPAPASA NATIN ANG EXACT SQL ERROR PABALIK!
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 }

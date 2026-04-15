@@ -4,7 +4,7 @@
                   {
                       "parameters":  {
                                          "httpMethod":  "POST",
-                                         "path":  "seeker-id-verification",
+                                         "path":  "seeker-id-verification-ocr",
                                          "options":  {
 
                                                      }

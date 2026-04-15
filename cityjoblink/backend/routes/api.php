@@ -62,3 +62,9 @@ Route::patch('/messages/read', [FeatureController::class, 'markMessagesRead']);
 // --- Metrics & Profile ---
 Route::get('/match-metrics', [FeatureController::class, 'matchMetrics']);
 Route::post('/employer/update-profile', [EmployerController::class, 'updateProfile']);
+
+// --- Job Fair Routes ---
+Route::get('/job-fairs', [FeatureController::class, 'getJobFairs']);
+Route::post('/job-fairs/join', [FeatureController::class, 'joinJobFair']);
+Route::patch('/job-fairs/leave', [FeatureController::class, 'leaveJobFair']);
+Route::post('/job-fairs', [FeatureController::class, 'createJobFair']);

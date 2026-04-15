@@ -39,7 +39,8 @@ class AuthController extends Controller
                 'employerBirFile' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,doc,docx', 'max:10240'],
                 'employerSecFile' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,doc,docx', 'max:10240'],
                 'employerBusinessPermitFile' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,doc,docx', 'max:10240'],
-                'qcId' => ['nullable', 'string', 'max:20', 'regex:/^(|\d{3}-\d{3}-\d{8}(?:-\d{1,2})?)$/'],
+                // FIXED: Enforce uppercase A-Z alphanumeric characters for standard IDs
+                'qcId' => ['nullable', 'string', 'max:50', 'regex:/^[A-Z0-9\-\s]*$/'],
                 'isQcResident' => ['nullable', 'boolean'],
                 'bdayMonth' => ['nullable', 'string', 'max:20'],
                 'bdayDay' => ['nullable', 'string', 'max:2'],
@@ -84,22 +85,30 @@ class AuthController extends Controller
             $normalizedQcId = trim((string) $request->qcId);
 
             if ($role === 'Seeker') {
+                $isQcResident = filter_var($request->isQcResident ?? true, FILTER_VALIDATE_BOOLEAN);
+
                 if ($normalizedQcId === '') {
                     return response()->json([
                         'status' => 'error',
-                        'message' => 'QC ID number is required for seeker registration.',
+                        'message' => $isQcResident ? 'QC ID number is required for residents.' : 'Valid ID number is required for non-residents.',
                     ], 422);
                 }
 
-                $normalizedQcIdDigits = preg_replace('/\D+/', '', $normalizedQcId);
-                if (!is_string($normalizedQcIdDigits) || strlen($normalizedQcIdDigits) < 14 || strlen($normalizedQcIdDigits) > 16) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'QC ID must contain 14 to 16 digits.',
-                    ], 422);
-                }
+                // FIXED: Only enforce strict 14-16 digit formatting if the user is a QC Resident
+                if ($isQcResident) {
+                    $normalizedQcIdDigits = preg_replace('/\D+/', '', $normalizedQcId);
+                    if (!is_string($normalizedQcIdDigits) || strlen($normalizedQcIdDigits) < 14 || strlen($normalizedQcIdDigits) > 16) {
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'QC ID must contain 14 to 16 digits.',
+                        ], 422);
+                    }
 
-                $normalizedQcId = $this->formatQcIdWithDashes($normalizedQcIdDigits);
+                    $normalizedQcId = $this->formatQcIdWithDashes($normalizedQcIdDigits);
+                } else {
+                    // FIXED: For non-QC residents, we strip any forbidden special characters and force uppercase
+                    $normalizedQcId = strtoupper(preg_replace('/[^a-zA-Z0-9\-\s]/', '', $normalizedQcId));
+                }
 
                 $bdayMonth = trim((string) $request->bdayMonth);
                 $bdayDay = (int) $request->bdayDay;
@@ -930,18 +939,6 @@ class AuthController extends Controller
         }
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
     private function storePendingSeekerIdDocument(\Illuminate\Http\UploadedFile $document): array
     {
         return $this->storeSeekerIdDocument($document, 'seeker-id-documents/pending');
@@ -1001,8 +998,6 @@ class AuthController extends Controller
             'stored_name' => $storedName,
         ];
     }
-
-
 
     private function moveSeekerIdDocumentToUserFolder(User $user): void
     {
@@ -1069,9 +1064,6 @@ class AuthController extends Controller
             $user->save();
         }
     }
-
-
-
 
     private function extractSkillsFromText(string $text): array
     {

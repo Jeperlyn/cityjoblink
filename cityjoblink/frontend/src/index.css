@@ -2,15 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #f9fafb; /* gray-50 */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: #f1f5f9; /* slate-100 — slightly warmer neutral */
+  }
+
+  *:focus-visible {
+    outline: 2px solid #0038A8;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* Smooth transitions on all interactive elements */
+  button, a, input, select, textarea {
+    transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
 }
 
 @layer components {
+  /* ── Cards ─────────────────────────────────────── */
   .gov-card {
-    @apply rounded-gov bg-white shadow-sm border border-slate-200;
+    @apply rounded-2xl bg-white shadow-sm border border-slate-200/80 transition-shadow duration-200;
   }
 
+  .gov-card-hover {
+    @apply gov-card hover:shadow-md hover:-translate-y-0.5 transition-all duration-200;
+  }
+
+  /* ── Layout ─────────────────────────────────────── */
   .layout-container {
     @apply max-w-[1280px] mx-auto w-full px-4 md:px-6;
   }
@@ -19,6 +46,7 @@ body {
     @apply grid grid-cols-12 gap-4 md:gap-6;
   }
 
+  /* ── Typography ─────────────────────────────────── */
   .h1-locked {
     @apply text-3xl md:text-4xl font-bold tracking-tight;
   }
@@ -31,24 +59,101 @@ body {
     @apply text-xl md:text-2xl font-bold tracking-tight;
   }
 
+  /* ── Navigation links (Navbar) ──────────────────── */
   .nav-link-fixed {
     @apply relative inline-flex items-center h-10 px-1 text-sm font-semibold transition-colors;
-    box-shadow: inset 0 -2px 0 0 transparent;
+  }
+
+  .nav-link-fixed::after {
+    content: '';
+    @apply absolute bottom-0 left-0 right-0 h-0.5 bg-transparent rounded-full transition-all duration-200;
   }
 
   .nav-link-fixed.is-active {
     @apply text-qc-blue;
-    box-shadow: inset 0 -2px 0 0 #f59e0b;
   }
 
+  .nav-link-fixed.is-active::after {
+    background-color: #FFD700;
+  }
+
+  /* ── Tab pills (used inside page tab bars) ──────── */
   .tab-pill-fixed {
-    @apply relative inline-flex items-center justify-center h-10 px-6 rounded-xl text-sm font-semibold capitalize transition-colors whitespace-nowrap;
-    box-shadow: inset 0 -3px 0 0 transparent;
+    @apply relative inline-flex items-center justify-center h-10 px-6 rounded-xl text-sm font-semibold capitalize transition-all duration-200 whitespace-nowrap;
   }
 
   .tab-pill-fixed.is-active {
-    @apply text-qc-blue bg-white;
-    box-shadow: inset 0 -3px 0 0 #1d4ed8;
+    @apply text-qc-blue bg-white shadow-sm;
+  }
+
+  /* ── Form inputs (base style) ───────────────────── */
+  .input-base {
+    @apply w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-800
+           placeholder:text-slate-400
+           focus:outline-none focus:ring-2 focus:ring-qc-blue/25 focus:border-qc-blue
+           transition-all duration-150;
+  }
+
+  /* ── Buttons ─────────────────────────────────────── */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2
+           bg-qc-blue text-white font-bold px-5 py-2.5 rounded-xl
+           hover:bg-[#002d8a] active:scale-[0.98]
+           shadow-sm transition-all duration-150;
+  }
+
+  .btn-gold {
+    @apply inline-flex items-center justify-center gap-2
+           bg-qc-gold text-black font-bold px-5 py-2.5 rounded-xl
+           hover:brightness-95 active:scale-[0.98]
+           shadow-sm transition-all duration-150;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2
+           bg-white border border-slate-200 text-slate-700 font-bold px-5 py-2.5 rounded-xl
+           hover:bg-slate-50 hover:border-slate-300 active:scale-[0.98]
+           shadow-sm transition-all duration-150;
+  }
+
+  /* ── Status badges ───────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border;
+  }
+
+  .badge-green  { @apply bg-emerald-50  text-emerald-700  border-emerald-200; }
+  .badge-red    { @apply bg-red-50      text-red-700      border-red-200; }
+  .badge-amber  { @apply bg-amber-50    text-amber-700    border-amber-200; }
+  .badge-blue   { @apply bg-blue-50     text-blue-700     border-blue-200; }
+  .badge-slate  { @apply bg-slate-100   text-slate-600    border-slate-200; }
+
+  /* ── Section label (uppercase caption above headings) */
+  .section-label {
+    @apply text-xs font-black uppercase tracking-widest text-slate-400;
+  }
+
+  /* ── Stat card ───────────────────────────────────── */
+  .stat-card {
+    @apply bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm
+           flex flex-col gap-1;
+  }
+
+  /* ── Sidebar nav item ────────────────────────────── */
+  .sidebar-nav-item {
+    @apply w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold
+           transition-all duration-150 text-slate-500 hover:bg-slate-50 hover:text-slate-800;
+  }
+
+  .sidebar-nav-item.active {
+    @apply bg-qc-blue/10 text-qc-blue;
+  }
+
+  /* ── Scrollbar hide ──────────────────────────────── */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* ── Page section wrapper ─────────────────────────── */
+  .page-section {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 py-8;
   }
 }
-

@@ -71,7 +71,11 @@ const Login = ({ onLogin }) => {
 
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const days = Array.from({length: 31}, (_, i) => i + 1);
-  const years = Array.from({length: 100}, (_, i) => new Date().getFullYear() - i);
+  
+  // FIXED: Restrict years to ensure user is at least 18 years old
+  const maxYear = new Date().getFullYear() - 18;
+  const years = Array.from({length: 100}, (_, i) => maxYear - i);
+
     const nameRegex = /^[a-zA-Z\s.-]*$/;
     const qcIdRegex = /^\d{3}-\d{3}-\d{8}(?:-\d{1,2})?$/;
 
@@ -122,6 +126,16 @@ const Login = ({ onLogin }) => {
 
     const handleQcIdInputChange = (e) => {
         const value = e.target.value;
+
+        // FIXED: Bypass strict QC formatting, allow alphanumeric, and force UPPERCASE if NOT a QC Resident
+        if (!formData.isQcResident) {
+            const alphanumericValue = value.replace(/[^a-zA-Z0-9-\s]/g, '').toUpperCase();
+            setFormData((prev) => ({ ...prev, qcId: alphanumericValue }));
+            setQcQrFeedback({ type: '', message: '' });
+            return;
+        }
+
+        // ORIGINAL LOGIC: For QC Residents
         const parsedQr = parseQcQrPayload(value);
 
         if (!parsedQr.isQrPayload) {
@@ -200,8 +214,18 @@ const Login = ({ onLogin }) => {
                 ? "QC ID number is required for residents."
                 : "Valid ID number is required for non-residents.";
         }
-        if (!qcIdRegex.test(formData.qcId)) {
-            return "QC ID format is invalid. Use ###-###-######## with optional -## for 15 to 16 digits.";
+        
+        // FIXED: Conditional validation for QC vs Non-QC ID formats
+        if (formData.isQcResident) {
+            if (!qcIdRegex.test(formData.qcId)) {
+                return "QC ID format is invalid. Use ###-###-######## with optional -## for 15 to 16 digits.";
+            }
+        } else {
+            // FIXED: Enforce uppercase A-Z only
+            const standardIdRegex = /^[A-Z0-9-\s]+$/;
+            if (!standardIdRegex.test(formData.qcId)) {
+                return "Standard ID must only contain uppercase letters, numbers, dashes, and spaces.";
+            }
         }
 
         if (!formData.gender) {
@@ -482,10 +506,12 @@ const handleSubmit = async (e) => {
 
     return (
         <main
-            className="relative min-h-screen flex items-center justify-center px-4 py-10 font-sans bg-cover bg-center"
+            className="relative min-h-screen flex flex-col font-sans bg-cover bg-center"
             style={{ backgroundImage: `url(${loginBackground})` }}
         >
-            <div className="absolute inset-0 bg-black/35 backdrop-blur-[1px]" />
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" />
+            {/* Spacer to push form to center */}
+            <div className="flex-1 flex items-center justify-center px-4 py-10 relative z-10">
       <SmartModal type={modal.type} title={modal.title} message={modal.message} onClose={() => setModal({ type: null })} />
         
             <section className="relative w-full max-w-md md:max-w-lg bg-white/95 p-6 md:p-8 rounded-2xl shadow-2xl border border-white/70 animate-in fade-in zoom-in duration-300">
@@ -534,7 +560,7 @@ const handleSubmit = async (e) => {
                         <input
                             required
                             type="email"
-                            className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue"
+                            className="w-full p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-qc-blue"
                             placeholder="Email (juan@gmail.com)"
                             value={formData.email}
                             onChange={e => setFormData({...formData, email: e.target.value})}
@@ -546,7 +572,7 @@ const handleSubmit = async (e) => {
                                     required
                                     type="text"
                                     maxLength="6"
-                                    className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue"
+                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-qc-blue"
                                     placeholder="6-digit reset code"
                                     value={formData.resetOtp}
                                     onChange={e => setFormData({...formData, resetOtp: e.target.value.replace(/[^0-9]/g, '')})}
@@ -555,7 +581,7 @@ const handleSubmit = async (e) => {
                                     <input
                                         required
                                         type={showPassword ? 'text' : 'password'}
-                                        className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue"
+                                        className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-qc-blue"
                                         placeholder="New Password (Min. 8 Chars)"
                                         value={formData.password}
                                         onChange={e => setFormData({...formData, password: e.target.value})}
@@ -573,7 +599,7 @@ const handleSubmit = async (e) => {
                                     <input
                                         required
                                         type={showConfirmPassword ? 'text' : 'password'}
-                                        className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue"
+                                        className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-qc-blue"
                                         placeholder="Confirm New Password"
                                         value={formData.confirmPassword}
                                         onChange={e => setFormData({...formData, confirmPassword: e.target.value})}
@@ -622,11 +648,11 @@ const handleSubmit = async (e) => {
                             <>
                                 <div className="space-y-3">
                                     <div className="flex gap-2">
-                                        <input required className="flex-1 p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="First Name" value={formData.firstName} onChange={e => setFormData({...formData, firstName: sanitizeNameInput(e.target.value, 50)})} />
-                                        <input className="w-1/3 p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="M.I." maxLength={50} value={formData.middleName} onChange={e => setFormData({...formData, middleName: sanitizeNameInput(e.target.value, 50)})} />
+                                        <input required className="flex-1 p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-qc-blue" placeholder="First Name" value={formData.firstName} onChange={e => setFormData({...formData, firstName: sanitizeNameInput(e.target.value, 50)})} />
+                                        <input className="w-1/3 p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-qc-blue" placeholder="M.I." maxLength={50} value={formData.middleName} onChange={e => setFormData({...formData, middleName: sanitizeNameInput(e.target.value, 50)})} />
                                     </div>
                                     <div className="flex gap-2">
-                                        <input required className="flex-1 p-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Last Name" value={formData.lastName} onChange={e => setFormData({...formData, lastName: sanitizeNameInput(e.target.value, 50)})} />
+                                        <input required className="flex-1 p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-qc-blue" placeholder="Last Name" value={formData.lastName} onChange={e => setFormData({...formData, lastName: sanitizeNameInput(e.target.value, 50)})} />
                                         <input className="w-1/4 p-3 bg-gray-50 border border-gray-300 rounded-lg text-gray-700 text-sm" placeholder="Suffix" maxLength={20} value={formData.suffix} onChange={e => setFormData({...formData, suffix: sanitizeNameInput(e.target.value, 20)})} />
                                     </div>
                                 </div>
@@ -634,8 +660,9 @@ const handleSubmit = async (e) => {
                                 <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 flex items-center justify-between">
                                     <span className="text-xs font-black text-gray-500 uppercase tracking-wider">Are you a QC Resident?</span>
                                     <div className="flex gap-1 bg-gray-200 p-1 rounded-lg">
-                                        <button type="button" onClick={() => setFormData({...formData, isQcResident: true})} className={`px-4 py-1 rounded-md text-[10px] font-black transition-all ${formData.isQcResident ? 'bg-blue-600 text-white shadow' : 'text-gray-500'}`}>YES</button>
-                                        <button type="button" onClick={() => setFormData({...formData, isQcResident: false})} className={`px-4 py-1 rounded-md text-[10px] font-black transition-all ${!formData.isQcResident ? 'bg-gray-600 text-white shadow' : 'text-gray-500'}`}>NO</button>
+                                        {/* FIXED: Clear qcId when toggling YES/NO so invalid data doesn't carry over */}
+                                        <button type="button" onClick={() => setFormData({...formData, isQcResident: true, qcId: ''})} className={`px-4 py-1 rounded-md text-[10px] font-black transition-all ${formData.isQcResident ? 'bg-blue-600 text-white shadow' : 'text-gray-500'}`}>YES</button>
+                                        <button type="button" onClick={() => setFormData({...formData, isQcResident: false, qcId: ''})} className={`px-4 py-1 rounded-md text-[10px] font-black transition-all ${!formData.isQcResident ? 'bg-gray-600 text-white shadow' : 'text-gray-500'}`}>NO</button>
                                     </div>
                                 </div>
 
@@ -701,9 +728,9 @@ const handleSubmit = async (e) => {
                             </div>
                         )}
                         
-                        <input required type="email" className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue" placeholder="Email (juan@gmail.com)" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                        <input required type="email" className="w-full p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-qc-blue" placeholder="Email (juan@gmail.com)" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
                         <div className="relative">
-                            <input required type={showPassword ? 'text' : 'password'} className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue" placeholder="Password (Min. 8 Chars)" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+                            <input required type={showPassword ? 'text' : 'password'} className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-qc-blue" placeholder="Password (Min. 8 Chars)" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
@@ -715,7 +742,7 @@ const handleSubmit = async (e) => {
                         </div>
                         {mode === 'register' && (
                             <div className="relative">
-                                <input required type={showConfirmPassword ? 'text' : 'password'} className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-qc-blue" placeholder="Confirm Password" value={formData.confirmPassword} onChange={e => setFormData({...formData, confirmPassword: e.target.value})} />
+                                <input required type={showConfirmPassword ? 'text' : 'password'} className="w-full p-3 pr-11 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-qc-blue" placeholder="Confirm Password" value={formData.confirmPassword} onChange={e => setFormData({...formData, confirmPassword: e.target.value})} />
                                 <button
                                     type="button"
                                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -808,9 +835,10 @@ const handleSubmit = async (e) => {
             </>
         )}
       </section>
+            </div>{/* end flex-1 center */}
+
     </main>
   );
 };
 
 export default Login;
-
