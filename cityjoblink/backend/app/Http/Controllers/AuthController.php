@@ -779,6 +779,8 @@ class AuthController extends Controller
             $user->save();
             $user->refresh();
 
+            $this->triggerN8nSeekerIdVerification($user);
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'ID document uploaded and stored successfully.',
@@ -937,6 +939,148 @@ class AuthController extends Controller
         } catch (\Throwable $error) {
             Log::error('n8n seeker resume webhook trigger failed: ' . $error->getMessage());
         }
+    }
+
+    private function triggerN8nSeekerIdVerification(User $user): void
+    {
+        $webhookUrl = config('services.n8n.seeker_webhook_url');
+
+        if (!$webhookUrl || empty($user->seeker_id_doc_path)) {
+            return;
+        }
+
+        try {
+            $appUrl = rtrim((string) config('app.url'), '/');
+            $documentUrl = $appUrl . '/' . ltrim((string) $user->seeker_id_doc_path, '/');
+            $callbackUrl = $appUrl . '/api/n8n/seeker-id-verification/callback';
+
+            // Build YYMMDD birthdate from separate bday fields (month stored as "Jan", "Feb", etc.)
+            $monthMap = [
+                'jan' => '01', 'feb' => '02', 'mar' => '03', 'apr' => '04',
+                'may' => '05', 'jun' => '06', 'jul' => '07', 'aug' => '08',
+                'sep' => '09', 'oct' => '10', 'nov' => '11', 'dec' => '12',
+            ];
+            $monthKey = strtolower(substr((string) ($user->bday_month ?? ''), 0, 3));
+            $monthNum = $monthMap[$monthKey] ?? '';
+            $dayNum = str_pad((string) ((int) ($user->bday_day ?? 0)), 2, '0', STR_PAD_LEFT);
+            $yearNum = substr((string) ((int) ($user->bday_year ?? 0)), -2);
+            $birthdate = ($monthNum && $dayNum !== '00' && $yearNum)
+                ? $yearNum . $monthNum . $dayNum
+                : '';
+
+            // Normalize gender to M/F
+            $genderRaw = strtolower(trim((string) ($user->gender ?? '')));
+            $gender = match (true) {
+                str_starts_with($genderRaw, 'm') => 'M',
+                str_starts_with($genderRaw, 'f') => 'F',
+                default => '',
+            };
+
+            $request = Http::timeout((int) config('services.n8n.timeout_seconds', 10));
+
+            $authUser = config('services.n8n.basic_auth_user');
+            $authPassword = config('services.n8n.basic_auth_password');
+
+            if ($authUser !== null && $authPassword !== null && $authUser !== '' && $authPassword !== '') {
+                $request = $request->withBasicAuth((string) $authUser, (string) $authPassword);
+            }
+
+            $response = $request->post($webhookUrl, [
+                'event'               => 'seeker_id_uploaded',
+                'user_id'             => $user->id,
+                'callback_url'        => $callbackUrl,
+                'document_url'        => $documentUrl,
+                'name'                => $user->name,
+                'expected_qc_id'      => $user->qc_id ?? '',
+                'expected_birthdate'  => $birthdate,
+                'expected_gender'     => $gender,
+            ]);
+
+            if ($response->successful()) {
+                Log::info("n8n seeker ID verification webhook triggered for user {$user->id}", [
+                    'status' => $response->status(),
+                ]);
+            } else {
+                Log::warning("n8n seeker ID verification webhook non-success for user {$user->id}", [
+                    'status'   => $response->status(),
+                    'response' => $response->body(),
+                ]);
+            }
+        } catch (\Throwable $error) {
+            Log::error('n8n seeker ID verification webhook failed: ' . $error->getMessage());
+        }
+    }
+
+    public function handleN8nSeekerIdVerificationCallback(\Illuminate\Http\Request $request): \Illuminate\Http\JsonResponse
+    {
+        // Validate shared secret
+        $expectedSecret = config('services.n8n.id_verification_callback_secret');
+        $receivedSecret = $request->header('X-CityJobLink-Webhook-Secret', '');
+
+        if ($expectedSecret && $receivedSecret !== $expectedSecret) {
+            Log::warning('n8n ID verification callback: invalid secret.');
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized.'], 401);
+        }
+
+        $userId  = (int) $request->input('user_id', 0);
+        $status  = (string) $request->input('status', '');
+        $reason  = (string) $request->input('reason', '');
+
+        if ($userId <= 0 || !in_array($status, ['verified', 'rejected', 'skipped'], true)) {
+            return response()->json(['status' => 'error', 'message' => 'Invalid payload.'], 422);
+        }
+
+        $user = User::find($userId);
+        if (!$user || ($user->role ?? '') !== 'Seeker') {
+            return response()->json(['status' => 'error', 'message' => 'Seeker not found.'], 404);
+        }
+
+        if ($status === 'skipped') {
+            Log::info("n8n ID verification skipped for user {$userId}: {$reason}");
+            return response()->json(['status' => 'success', 'message' => 'Skipped — no action taken.']);
+        }
+
+        $isVerified  = $status === 'verified';
+        $isQcResident = (bool) $user->is_qc_resident;
+
+        $user->id_verification_status         = $isVerified ? 'verified' : 'rejected';
+        $user->id_verification_reason         = $isVerified ? null : $reason;
+        $user->id_verification_confidence     = (float) $request->input('confidence', 0);
+        $user->id_verification_provider       = (string) ($request->input('provider') ?? 'n8n_ocr');
+        $user->id_verification_reference      = (string) ($request->input('reference_id') ?? '');
+        $user->id_verification_checked_at     = now();
+        $user->id_extracted_qc_id             = $request->input('extracted_qc_id');
+        $user->id_extracted_name              = $request->input('extracted_name');
+        $user->id_extracted_birthdate         = $request->input('extracted_birthdate');
+        $user->id_extracted_gender            = $request->input('extracted_gender');
+        $user->id_birthdate_matches_profile   = $request->input('birthdate_matches_profile');
+        $user->id_gender_matches_profile      = $request->input('gender_matches_profile');
+        $user->id_ocr_text                    = $request->input('ocr_text');
+        $user->is_priority_verified           = $isVerified && $isQcResident;
+        $user->save();
+
+        DB::table('notifications')->insert([
+            'to_user_id' => $user->id,
+            'content'    => $isVerified
+                ? ($isQcResident
+                    ? 'Your QC ID has been verified successfully via automated review.'
+                    : 'Your identity document has been verified successfully via automated review.')
+                : ($isQcResident
+                    ? 'Your QC ID could not be verified: ' . $reason
+                    : 'Your identity document could not be verified: ' . $reason),
+            'meta'       => json_encode([
+                'type'     => 'seeker_id_review',
+                'approved' => $isVerified,
+                'reason'   => $isVerified ? null : $reason,
+                'provider' => 'n8n_ocr',
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Log::info("n8n ID verification callback processed for user {$userId}: {$status}");
+
+        return response()->json(['status' => 'success', 'message' => 'Callback processed.']);
     }
 
     private function storePendingSeekerIdDocument(\Illuminate\Http\UploadedFile $document): array

@@ -40,6 +40,7 @@ const AdminDashboard = ({
     jobFairs = [],
     onAddJobFair,
     notify,
+    onMessageEmployer,
 }) => {
     const [activeTab, setActiveTab] = useState('overview');
     const [analyticsTab, setAnalyticsTab] = useState('employer');
@@ -54,6 +55,8 @@ const AdminDashboard = ({
         reason: '',
         isSubmitting: false,
     });
+    const [seekerSubTab, setSeekerSubTab] = useState('qc');
+    const [employerMessageModal, setEmployerMessageModal] = useState({ open: false, employer: null, text: '', isSending: false });
 
     const [newFair, setNewFair] = useState({
         title: '',
@@ -82,6 +85,7 @@ const AdminDashboard = ({
     const applicationStageBreakdown = seekerAnalytics?.applicationStageBreakdown || {};
     const hiredByResidency = seekerAnalytics?.hiredByResidency || {};
     const hiredByGender = seekerAnalytics?.hiredByGender || {};
+    const hiredByPriority = seekerAnalytics?.hiredByPriority || {};
 
     const pendingEmployers = useMemo(
         () => employers.filter((employer) => {
@@ -429,6 +433,7 @@ const AdminDashboard = ({
                                     { label: 'QC Residents', value: seekerSummary.qcSeekers ?? residencyBreakdown.QC ?? 0, helper: 'Strict QC category only' },
                                     { label: 'Non-QC Residents', value: seekerSummary.nonQcSeekers ?? residencyBreakdown['Non-QC'] ?? 0, helper: 'Strict Non-QC category only' },
                                     { label: 'Verified Seekers', value: seekerSummary.verifiedSeekers ?? seekers.filter((seeker) => seeker.idVerificationStatus === 'verified').length, helper: 'Manually or system verified IDs' },
+                                    { label: 'Priority Verified', value: seekerSummary.priorityVerifiedSeekers ?? seekers.filter((seeker) => seeker.isPriorityVerified).length, helper: 'QC residents with approved ID — shown first to employers' },
                                     { label: 'Applications in Window', value: seekerSummary.applicationsInWindow ?? 0, helper: 'Applications created in the selected period' },
                                     { label: 'Hired Seekers', value: seekerSummary.hiredSeekers ?? 0, helper: 'Applicants marked as hired' },
                                 ].map((card) => (
@@ -517,6 +522,13 @@ const AdminDashboard = ({
                                             <p className="font-bold text-gray-900">Female: {hiredByGender.Female ?? 0}</p>
                                             <p className="font-bold text-gray-900">Other: {hiredByGender['Other/Unspecified'] ?? 0}</p>
                                         </div>
+                                        <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 col-span-2">
+                                            <p className="text-xs font-black uppercase tracking-widest text-blue-600">Hired by Priority Status</p>
+                                            <div className="mt-2 flex gap-6">
+                                                <p className="font-bold text-gray-900">Priority Verified: <span className="text-blue-700">{hiredByPriority['Priority Verified'] ?? 0}</span></p>
+                                                <p className="font-bold text-gray-900">Not Priority: {hiredByPriority['Not Priority'] ?? 0}</p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -586,16 +598,32 @@ const AdminDashboard = ({
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 {(employer.uploadedDocs || employer.verificationDocBirPath || employer.verification_doc_bir_path || employer.verificationDocSecPath || employer.verification_doc_sec_path || employer.verificationDocBusinessPermitPath || employer.verification_doc_business_permit_path) ? (
-                                                    <div className="flex gap-2 justify-end">
+                                                    <div className="flex gap-2 justify-end flex-wrap">
                                                         {!employer.isVerified && (
                                                             <button onClick={() => handleApproveClick(employer.id)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all hover:shadow-md active:scale-95">Approve</button>
                                                         )}
                                                         <button onClick={() => handleRejectClick(employer.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all hover:shadow-md active:scale-95">
                                                             {employer.isVerified ? 'Revert' : 'Pending'}
                                                         </button>
+                                                        {!employer.isVerified && (
+                                                            <button
+                                                                onClick={() => setEmployerMessageModal({ open: true, employer, text: `Hello ${employer.companyName || employer.name},\n\nWe are following up on your employer verification. Please submit the required documents (BIR Certificate, SEC Registration, and Business Permit) to complete your account verification.\n\nThank you,\nPESO QC Team`, isSending: false })}
+                                                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all hover:shadow-md active:scale-95"
+                                                            >
+                                                                Message
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 ) : (
-                                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest italic">Awaiting Docs</span>
+                                                    <div className="flex gap-2 justify-end">
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest italic">Awaiting Docs</span>
+                                                        <button
+                                                            onClick={() => setEmployerMessageModal({ open: true, employer, text: `Hello ${employer.companyName || employer.name},\n\nWe noticed you haven't submitted your verification documents yet. Please upload your BIR Certificate, SEC Registration, and Business Permit to complete your employer account setup.\n\nThank you,\nPESO QC Team`, isSending: false })}
+                                                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:shadow-md active:scale-95"
+                                                        >
+                                                            Request Docs
+                                                        </button>
+                                                    </div>
                                                 )}
                                             </td>
                                         </tr>
@@ -607,93 +635,132 @@ const AdminDashboard = ({
                 </div>
             )}
 
-            {activeTab === 'seekers' && (
-                <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-                    <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                        <div>
-                            <h2 className="font-bold text-lg text-gray-900">Seeker QC ID Verification Table</h2>
-                            <p className="text-sm text-gray-500 mt-1">Review applicant identity documents in a streamlined list view.</p>
-                        </div>
-                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700">
-                            {seekers.length} total seekers
-                        </span>
-                    </div>
+            {activeTab === 'seekers' && (() => {
+                const qcSeekers = seekers.filter(s => s.isQcResident);
+                const nonQcSeekers = seekers.filter(s => !s.isQcResident);
+                const activeSeekers = seekerSubTab === 'qc' ? qcSeekers : nonQcSeekers;
+                const isQcTab = seekerSubTab === 'qc';
 
-                    <div className="overflow-x-auto font-sans">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-gray-50 border-b text-gray-600 uppercase text-[10px] font-black tracking-widest">
-                                <tr>
-                                    <th className="px-6 py-4">Seeker Name</th>
-                                    <th className="px-6 py-4">QC ID Number</th>
-                                    <th className="px-6 py-4">Status</th>
-                                    <th className="px-6 py-4">Verification File</th>
-                                    <th className="px-6 py-4">Last Checked</th>
-                                    <th className="px-6 py-4 text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {seekers.length === 0 ? (
+                return (
+                    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+                        {/* Sub-tab toggle */}
+                        <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div>
+                                <h2 className="font-bold text-lg text-gray-900">
+                                    {isQcTab ? 'Seeker QC ID Verification Table' : 'Non-QC Identity Verification Table'}
+                                </h2>
+                                <p className="text-sm text-gray-500 mt-1">
+                                    {isQcTab
+                                        ? 'Review QC ID documents for Quezon City resident applicants.'
+                                        : 'Review identity documents for non-QC resident applicants.'}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="flex rounded-xl border border-gray-200 overflow-hidden text-xs font-bold">
+                                    <button
+                                        onClick={() => setSeekerSubTab('qc')}
+                                        className={`px-4 py-2 transition-colors ${seekerSubTab === 'qc' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        QC Residents
+                                        <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-white/20 px-1.5 text-[10px]">
+                                            {qcSeekers.length}
+                                        </span>
+                                    </button>
+                                    <button
+                                        onClick={() => setSeekerSubTab('nonqc')}
+                                        className={`px-4 py-2 transition-colors border-l border-gray-200 ${seekerSubTab === 'nonqc' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        Non-QC Residents
+                                        <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-white/20 px-1.5 text-[10px]">
+                                            {nonQcSeekers.length}
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto font-sans">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-gray-50 border-b text-gray-600 uppercase text-[10px] font-black tracking-widest">
                                     <tr>
-                                        <td colSpan="6" className="text-center p-16 text-gray-500 italic">No seeker ID documents found.</td>
+                                        <th className="px-6 py-4">Seeker Name</th>
+                                        <th className="px-6 py-4">{isQcTab ? 'QC ID Number' : "Gov't ID Number"}</th>
+                                        <th className="px-6 py-4">Status</th>
+                                        <th className="px-6 py-4">Verification File</th>
+                                        <th className="px-6 py-4">Last Checked</th>
+                                        <th className="px-6 py-4 text-right">Action</th>
                                     </tr>
-                                ) : (
-                                    seekers.map((seeker) => (
-                                        <tr key={seeker.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col">
-                                                    <span className="font-bold text-gray-900">{seeker.name}</span>
-                                                    <span className="text-[11px] text-gray-400">{seeker.email}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className="font-mono text-xs font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded">
-                                                    {seeker.qcId || seeker.qc_id || '---'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${seekerStatusStyles[seeker.idVerificationStatus] || seekerStatusStyles.not_submitted}`}>
-                                                    {seekerStatusLabels[seeker.idVerificationStatus] || 'Unknown'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <button 
-                                                    onClick={() => openSeekerDocument(seeker)} 
-                                                    className="inline-flex items-center gap-1.5 text-blue-600 font-black text-[10px] uppercase tracking-wider hover:underline hover:text-blue-700"
-                                                >
-                                                    <ExternalLink size={12} />
-                                                    View Doc
-                                                </button>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col">
-                                                    <span className="text-[11px] font-semibold text-gray-600">{formatDateTime(seeker.idVerificationCheckedAt)}</span>
-                                                    <span className="text-[9px] text-gray-400 uppercase font-black tracking-tighter mt-0.5">Priority: {seeker.isPriorityVerified ? 'Yes' : 'No'}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <div className="flex gap-2 justify-end">
-                                                    <button 
-                                                        onClick={() => openSeekerReviewModal(seeker, true)} 
-                                                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:shadow active:scale-95"
-                                                    >
-                                                        Verify
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => openSeekerReviewModal(seeker, false)} 
-                                                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:shadow active:scale-95"
-                                                    >
-                                                        Reject
-                                                    </button>
-                                                </div>
+                                </thead>
+                                <tbody>
+                                    {activeSeekers.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="6" className="text-center p-16 text-gray-500 italic">
+                                                {isQcTab ? 'No QC resident ID documents found.' : 'No non-QC resident ID documents found.'}
                                             </td>
                                         </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
+                                    ) : (
+                                        activeSeekers.map((seeker) => (
+                                            <tr key={seeker.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-gray-900">{seeker.name}</span>
+                                                        <span className="text-[11px] text-gray-400">{seeker.email}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="font-mono text-xs font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded">
+                                                        {seeker.qcId || seeker.qc_id || '---'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${seekerStatusStyles[seeker.idVerificationStatus] || seekerStatusStyles.not_submitted}`}>
+                                                        {seekerStatusLabels[seeker.idVerificationStatus] || 'Unknown'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <button
+                                                        onClick={() => openSeekerDocument(seeker)}
+                                                        className="inline-flex items-center gap-1.5 text-blue-600 font-black text-[10px] uppercase tracking-wider hover:underline hover:text-blue-700"
+                                                    >
+                                                        <ExternalLink size={12} />
+                                                        View Doc
+                                                    </button>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-[11px] font-semibold text-gray-600">{formatDateTime(seeker.idVerificationCheckedAt)}</span>
+                                                        {isQcTab && (
+                                                            <span className="text-[9px] text-gray-400 uppercase font-black tracking-tighter mt-0.5">
+                                                                Priority: {seeker.isPriorityVerified ? 'Yes' : 'No'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex gap-2 justify-end">
+                                                        <button
+                                                            onClick={() => openSeekerReviewModal(seeker, true)}
+                                                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:shadow active:scale-95"
+                                                        >
+                                                            Verify
+                                                        </button>
+                                                        <button
+                                                            onClick={() => openSeekerReviewModal(seeker, false)}
+                                                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:shadow active:scale-95"
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {activeTab === 'jobfairs' && (
                 <div className="grid lg:grid-cols-2 gap-8">
@@ -865,30 +932,103 @@ const AdminDashboard = ({
                 </div>
             )}
 
-            {seekerReviewModal.open && (
+            {seekerReviewModal.open && (() => {
+                const isQcResident = seekerReviewModal.seeker?.isQcResident;
+                const { approved } = seekerReviewModal;
+                const modalTitle = approved
+                    ? (isQcResident ? 'Verify seeker QC ID?' : 'Verify seeker identity?')
+                    : (isQcResident ? 'Unverify seeker QC ID?' : 'Unverify seeker identity?');
+                const modalBody = approved
+                    ? (isQcResident
+                        ? `${seekerReviewModal.seeker?.name} will gain priority verification status.`
+                        : `${seekerReviewModal.seeker?.name}'s identity document will be marked as verified.`)
+                    : (isQcResident
+                        ? `${seekerReviewModal.seeker?.name} will lose priority verification status.`
+                        : `${seekerReviewModal.seeker?.name}'s identity verification will be revoked.`);
+                const rejectPlaceholder = isQcResident
+                    ? 'Explain why the QC ID cannot be verified. This will be shown to the seeker.'
+                    : 'Explain why the identity document cannot be verified. This will be shown to the seeker.';
+
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+                            <div className={`p-6 border-b ${approved ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
+                                <div className="flex items-start gap-4">
+                                    <div className={`p-4 rounded-full ${approved ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                        {approved ? <CheckCircle size={32} /> : <AlertTriangle size={32} />}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-gray-900">{modalTitle}</h3>
+                                        <p className="text-sm text-gray-600 mt-2">{modalBody}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                {!approved && (
+                                    <div>
+                                        <label className="text-xs font-black uppercase tracking-wide text-gray-500">Reason for unverifying</label>
+                                        <textarea value={seekerReviewModal.reason} onChange={(e) => setSeekerReviewModal((prev) => ({ ...prev, reason: e.target.value }))} rows={4} className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm outline-none focus:ring-2 focus:ring-red-400" placeholder={rejectPlaceholder} />
+                                    </div>
+                                )}
+                                <div className="flex gap-3">
+                                    <button onClick={confirmSeekerReview} disabled={seekerReviewModal.isSubmitting || (!approved && !seekerReviewModal.reason.trim())} className={`flex-1 py-3 rounded-xl text-white font-bold transition-colors ${approved ? 'bg-green-600 hover:bg-green-700 disabled:bg-green-300' : 'bg-red-600 hover:bg-red-700 disabled:bg-red-300'}`}>{seekerReviewModal.isSubmitting ? 'Saving...' : approved ? 'Confirm Verification' : 'Confirm Unverify'}</button>
+                                    <button onClick={closeSeekerReviewModal} className="flex-1 py-3 rounded-xl bg-white border border-gray-300 text-gray-600 font-bold hover:bg-gray-50 transition-colors">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {employerMessageModal.open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-                        <div className={`p-6 border-b ${seekerReviewModal.approved ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
+                        <div className="p-6 border-b bg-blue-50 border-blue-100">
                             <div className="flex items-start gap-4">
-                                <div className={`p-4 rounded-full ${seekerReviewModal.approved ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                                    {seekerReviewModal.approved ? <CheckCircle size={32} /> : <AlertTriangle size={32} />}
+                                <div className="p-4 rounded-full bg-blue-100 text-blue-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-bold text-gray-900">{seekerReviewModal.approved ? 'Verify seeker QC ID?' : 'Unverify seeker QC ID?'}</h3>
-                                    <p className="text-sm text-gray-600 mt-2">{seekerReviewModal.seeker?.name} will {seekerReviewModal.approved ? 'gain' : 'lose'} priority verification status.</p>
+                                    <h3 className="text-xl font-bold text-gray-900">Message Employer</h3>
+                                    <p className="text-sm text-gray-600 mt-1">Sending to: <span className="font-bold">{employerMessageModal.employer?.companyName || employerMessageModal.employer?.name}</span></p>
                                 </div>
                             </div>
                         </div>
                         <div className="p-6 space-y-4">
-                            {!seekerReviewModal.approved && (
-                                <div>
-                                    <label className="text-xs font-black uppercase tracking-wide text-gray-500">Reason for unverifying</label>
-                                    <textarea value={seekerReviewModal.reason} onChange={(e) => setSeekerReviewModal((prev) => ({ ...prev, reason: e.target.value }))} rows={4} className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm outline-none focus:ring-2 focus:ring-red-400" placeholder="Explain why the QC ID cannot be verified. This will be shown to the seeker." />
-                                </div>
-                            )}
+                            <div>
+                                <label className="text-xs font-black uppercase tracking-wide text-gray-500">Message</label>
+                                <textarea
+                                    value={employerMessageModal.text}
+                                    onChange={(e) => setEmployerMessageModal(prev => ({ ...prev, text: e.target.value }))}
+                                    rows={6}
+                                    className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm outline-none focus:ring-2 focus:ring-blue-400"
+                                />
+                            </div>
                             <div className="flex gap-3">
-                                <button onClick={confirmSeekerReview} disabled={seekerReviewModal.isSubmitting || (!seekerReviewModal.approved && !seekerReviewModal.reason.trim())} className={`flex-1 py-3 rounded-xl text-white font-bold transition-colors ${seekerReviewModal.approved ? 'bg-green-600 hover:bg-green-700 disabled:bg-green-300' : 'bg-red-600 hover:bg-red-700 disabled:bg-red-300'}`}>{seekerReviewModal.isSubmitting ? 'Saving...' : seekerReviewModal.approved ? 'Confirm Verification' : 'Confirm Unverify'}</button>
-                                <button onClick={closeSeekerReviewModal} className="flex-1 py-3 rounded-xl bg-white border border-gray-300 text-gray-600 font-bold hover:bg-gray-50 transition-colors">Cancel</button>
+                                <button
+                                    onClick={async () => {
+                                        if (!employerMessageModal.text.trim()) return;
+                                        setEmployerMessageModal(prev => ({ ...prev, isSending: true }));
+                                        try {
+                                            await onMessageEmployer(employerMessageModal.employer.id, employerMessageModal.text.trim());
+                                            notify('Message sent to employer.', 'success');
+                                            setEmployerMessageModal({ open: false, employer: null, text: '', isSending: false });
+                                        } catch (err) {
+                                            notify(err?.message || 'Failed to send message.', 'error');
+                                            setEmployerMessageModal(prev => ({ ...prev, isSending: false }));
+                                        }
+                                    }}
+                                    disabled={employerMessageModal.isSending || !employerMessageModal.text.trim()}
+                                    className="flex-1 py-3 rounded-xl text-white font-bold transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300"
+                                >
+                                    {employerMessageModal.isSending ? 'Sending...' : 'Send Message'}
+                                </button>
+                                <button
+                                    onClick={() => setEmployerMessageModal({ open: false, employer: null, text: '', isSending: false })}
+                                    className="flex-1 py-3 rounded-xl bg-white border border-gray-300 text-gray-600 font-bold hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancel
+                                </button>
                             </div>
                         </div>
                     </div>

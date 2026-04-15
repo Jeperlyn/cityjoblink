@@ -895,6 +895,7 @@ class FeatureController extends Controller
                 'gender',
                 'id_extracted_gender',
                 'is_qc_resident',
+                'is_priority_verified',
                 'bday_year',
                 'id_verification_status',
                 'created_at',
@@ -977,6 +978,7 @@ class FeatureController extends Controller
                 'qcSeekers' => $residencyBreakdown['QC'],
                 'nonQcSeekers' => $residencyBreakdown['Non-QC'],
                 'verifiedSeekers' => (int) $seekerRows->where('id_verification_status', 'verified')->count(),
+                'priorityVerifiedSeekers' => (int) $seekerRows->where('is_priority_verified', true)->count(),
                 'applicationsInWindow' => (int) $windowedApplications->clone()->count(),
                 'hiredSeekers' => (int) $hiredSeekers->count(),
             ],
@@ -989,6 +991,10 @@ class FeatureController extends Controller
             'hiredByResidency' => [
                 'QC' => (int) $hiredSeekers->where('is_qc_resident', true)->count(),
                 'Non-QC' => (int) $hiredSeekers->where('is_qc_resident', false)->count(),
+            ],
+            'hiredByPriority' => [
+                'Priority Verified' => (int) $hiredSeekers->where('is_priority_verified', true)->count(),
+                'Not Priority' => (int) $hiredSeekers->where('is_priority_verified', false)->count(),
             ],
             'hiredByGender' => [
                 'Male' => (int) $hiredSeekers->filter(fn($seeker) => in_array(mb_strtolower(trim((string) ($seeker->id_extracted_gender ?: $seeker->gender ?: ''))), ['male', 'm'], true))->count(),
@@ -1061,6 +1067,7 @@ class FeatureController extends Controller
                 'id_birthdate_matches_profile',
                 'id_gender_matches_profile',
                 'is_priority_verified',
+                'is_qc_resident',
                 'created_at',
                 'updated_at',
             ])
@@ -1106,14 +1113,19 @@ class FeatureController extends Controller
         $seeker->id_verification_reason = $approved ? null : $reason;
         $seeker->id_verification_provider = 'admin_manual_review';
         $seeker->id_verification_checked_at = now();
-        $seeker->is_priority_verified = $approved;
+        $seeker->is_priority_verified = $approved && (bool) $seeker->is_qc_resident;
         $seeker->save();
 
+        $isQcResident = (bool) $seeker->is_qc_resident;
         DB::table('notifications')->insert([
             'to_user_id' => $seeker->id,
             'content' => $approved
-                ? 'Your QC ID has been verified by the admin team.'
-                : 'Your QC ID could not be verified: ' . $reason,
+                ? ($isQcResident
+                    ? 'Your QC ID has been verified by the admin team.'
+                    : 'Your identity document has been verified by the admin team.')
+                : ($isQcResident
+                    ? 'Your QC ID could not be verified: ' . $reason
+                    : 'Your identity document could not be verified: ' . $reason),
             'meta' => json_encode([
                 'type' => 'seeker_id_review',
                 'approved' => $approved,
@@ -1484,6 +1496,7 @@ class FeatureController extends Controller
             })
             ->leftJoin('job_matches as jm', 'jm.id', '=', 'latest.latest_id')
             ->where('j.employer_id', $employer->id)
+            ->orderByDesc('s.is_priority_verified')
             ->orderByDesc('a.created_at')
             ->select([
                 'a.id',
@@ -1520,6 +1533,8 @@ class FeatureController extends Controller
                 's.instagram_url as seeker_instagram_url',
                 'jm.match_score as n8n_match_score',
                 'jm.match_reasons as n8n_match_reasons',
+                's.is_priority_verified as seeker_is_priority_verified',
+                's.is_qc_resident as seeker_is_qc_resident',
             ])
             ->get()
             ->map(function ($item) {
