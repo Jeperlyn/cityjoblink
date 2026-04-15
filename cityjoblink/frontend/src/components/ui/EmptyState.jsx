@@ -4,20 +4,23 @@ const EmptyState = ({
   icon,
   title,
   description,
+  action,
   className = '',
-  minHeightClass = 'min-h-[400px]',
+  minHeightClass = 'min-h-[360px]',
 }) => {
   return (
     <div
-      className={`bg-white rounded-2xl border border-gray-200 shadow-sm text-center flex flex-col items-center justify-center p-8 ${minHeightClass} ${className}`.trim()}
+      className={`bg-white rounded-2xl border border-slate-200/80 shadow-sm text-center flex flex-col items-center justify-center p-10 ${minHeightClass} ${className}`.trim()}
     >
       {icon ? (
-        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 mb-4">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-qc-blue/60 mb-5"
+             style={{ background: 'linear-gradient(135deg, #eef2ff 0%, #dbeafe 100%)' }}>
           {icon}
         </div>
       ) : null}
-      <h3 className="text-lg font-bold text-gray-900 mb-1">{title}</h3>
-      <p className="text-gray-500 text-sm max-w-md">{description}</p>
+      <h3 className="text-base font-bold text-slate-800 mb-1.5">{title}</h3>
+      <p className="text-slate-500 text-sm max-w-xs leading-relaxed">{description}</p>
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 };

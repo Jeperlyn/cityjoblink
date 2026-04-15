@@ -9,13 +9,13 @@ const BaseCard = ({
   bodyClassName = '',
 }) => {
   return (
-    <article className={`gov-card overflow-hidden flex flex-col h-full ${className}`.trim()}>
+    <article className={`gov-card overflow-hidden flex flex-col h-full transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 ${className}`.trim()}>
       {imageSrc ? (
-        <div className="relative aspect-[16/9] w-full bg-slate-200">
+        <div className="relative w-full bg-slate-100 overflow-hidden" style={{ aspectRatio: '16/9' }}>
           <img
             src={imageSrc}
             alt={imageAlt}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover transition-transform duration-300 hover:scale-[1.02]"
             loading="lazy"
           />
           {imageOverlay}

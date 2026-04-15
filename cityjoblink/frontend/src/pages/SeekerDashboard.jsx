@@ -263,26 +263,26 @@ export const FindJobs = ({ jobs = [], recommendations = [], onApply, application
           <input 
             value={keyword} 
             onChange={e => setKeyword(e.target.value)} 
-            className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors font-medium text-gray-900" 
+            className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-qc-blue/25 focus:bg-white transition-colors font-medium text-gray-900" 
             placeholder="Search job titles or companies..."
           />
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <select value={selectedLocation} onChange={e => setSelectedLocation(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 font-medium">
+            <select value={selectedLocation} onChange={e => setSelectedLocation(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-qc-blue/25 text-gray-700 font-medium">
               <option value="">All Locations</option>
               {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
             </select>
           </div>
           <div>
-            <select value={selectedType} onChange={e => setSelectedType(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 font-medium">
+            <select value={selectedType} onChange={e => setSelectedType(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-qc-blue/25 text-gray-700 font-medium">
               <option value="">All Job Types</option>
               {types.map(type => <option key={type} value={type}>{type}</option>)}
             </select>
           </div>
           <div>
-            <select value={selectedEducationLevel} onChange={e => setSelectedEducationLevel(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 font-medium">
+            <select value={selectedEducationLevel} onChange={e => setSelectedEducationLevel(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-qc-blue/25 text-gray-700 font-medium">
               <option value="">All Education Requirements</option>
               <option value="not_specified">Not Specified</option>
               {EDUCATION_MINIMUM_OPTIONS.map((option) => (
@@ -986,7 +986,7 @@ const toastMsg = (title, icon = 'success') => {
   });
 };
 
-const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], savedJobs = [], initialTab, onViewJob, onNavigate, onUpdateProfile, onWithdrawTraining, onSubmitEmployerFeedback, onToggleSaveJob, onApply, notify }) => {
+const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = [], jobFairs = [], savedJobs = [], initialTab, onViewJob, onNavigate, onUpdateProfile, onWithdrawTraining, onSubmitEmployerFeedback, onToggleSaveJob, onApply, notify, onWithdrawJobFair }) => {
   const [activeTab, setActiveTab] = useState(initialTab || 'overview');
   const [resumeFile, setResumeFile] = useState(null);
   const [idDocumentFile, setIdDocumentFile] = useState(null);
@@ -1014,6 +1014,13 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
   const isPriorityVerified = typeof profile?.isPriorityVerified === 'boolean'
     ? profile.isPriorityVerified
     : !!profile?.is_priority_verified;
+
+  const isQcResident = profile?.isQcResident ?? profile?.is_qc_resident ?? false;
+  const idLabel = isQcResident ? 'QC ID' : 'Government ID';
+  const idSectionTitle = isQcResident ? 'QC ID Verification' : 'Government ID Verification';
+  const idSectionSubtitle = isQcResident
+    ? 'If your QCitizen ID is invalid, you can re-upload it here.'
+    : 'If your government ID was rejected or needs updating, you can re-upload it here.';
 
   const verificationLabels = {
     verified: 'Verified',
@@ -1128,7 +1135,12 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
           toastMsg("Training withdrawn successfully.");
         }
     } else if (withdrawModal.type === 'jobfair') {
-        toastMsg("Job Fair withdrawn successfully.");
+        if (typeof onWithdrawJobFair === 'function') {
+            const ok = await onWithdrawJobFair(withdrawModal.id);
+            if (!ok) return;
+        } else {
+            toastMsg("Job Fair withdrawn successfully.");
+        }
     }
     setWithdrawModal({ isOpen: false, type: null, id: null, title: '' });
   };
@@ -1337,7 +1349,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
     }
 
     if (!idNumberInput.trim()) {
-      alert('Please enter your QC ID number before uploading.');
+      alert(`Please enter your ${idLabel} number before uploading.`);
       return;
     }
 
@@ -1371,7 +1383,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
         onUpdateProfile(data.user);
       }
 
-      toastMsg(canReuploadId ? 'QC ID re-uploaded. Verification restarted.' : 'QC ID uploaded. Verification in progress.');
+      toastMsg(canReuploadId ? `${idLabel} re-uploaded. Verification restarted.` : `${idLabel} uploaded. Verification in progress.`);
     } catch (error) {
       console.error('ID Upload Error:', error);
       alert(error?.message || 'Failed to upload ID document. Please try again.');
@@ -1405,19 +1417,20 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50 pb-20 pt-8">
-      <div className="max-w-6xl mx-auto p-4 md:p-6">
+    <div className="min-h-screen bg-slate-100 pb-20 pt-8">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
         
         {/* Header Section */}
         <header className="mb-8">
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">Seeker Dashboard</h1>
-            <p className="text-gray-500 mt-1 font-medium">Manage your career journey and profile</p>
+            <p className="section-label mb-1">Job Seeker</p>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">My Dashboard</h1>
+            <p className="text-slate-500 mt-1 text-sm">Manage your career journey, applications, and profile.</p>
         </header>
 
         {isIdInvalid && (
           <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 animate-in fade-in duration-200">
             <div>
-              <p className="text-sm font-black text-red-700 uppercase tracking-wider">QC ID Verification Failed</p>
+              <p className="text-sm font-black text-red-700 uppercase tracking-wider">{idSectionTitle} Failed</p>
               <p className="text-sm text-red-700 mt-1">
                 {idVerificationReason || 'Your uploaded QCitizen ID could not be validated. Please re-upload a clearer copy to continue priority verification.'}
               </p>
@@ -1432,14 +1445,13 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
           </div>
         )}
         
-        {/* Sleek Tab Navigation */}
-        <nav className="flex gap-2 mb-10 bg-gray-100/80 p-1.5 rounded-2xl w-fit overflow-x-auto mx-auto md:mx-0 shadow-inner">
-          {/* ✅ FEATURE: Added 'saved jobs' to the tab navigation */}
+        {/* Tab Navigation */}
+        <nav className="flex gap-1.5 mb-10 bg-slate-200/60 p-1.5 rounded-2xl w-fit overflow-x-auto no-scrollbar mx-auto md:mx-0">
           {['overview', 'saved jobs', 'trainings', 'job fairs', 'profile'].map(tab => (
-            <button 
-                key={tab} 
-                onClick={() => setActiveTab(tab)} 
-                className={`px-6 py-2.5 rounded-xl text-sm font-semibold capitalize transition-all duration-200 whitespace-nowrap ${activeTab === tab ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'}`}
+            <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-5 py-2.5 rounded-xl text-sm font-bold capitalize transition-all duration-200 whitespace-nowrap ${activeTab === tab ? 'bg-white text-qc-blue shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'}`}
             >
               {tab}
             </button>
@@ -1504,7 +1516,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                 </div>
 
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">ID Number</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{idLabel} Number</p>
                   <p className="text-sm font-medium text-gray-900 font-mono">{profile?.qc_id || "None"}</p>
                 </div>
               </div>
@@ -1518,7 +1530,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                     <input
                       value={backgroundLinks.portfolioUrl}
                       onChange={(e) => setBackgroundLinks((prev) => ({ ...prev, portfolioUrl: e.target.value }))}
-                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-qc-blue/25"
                       placeholder="https://yourportfolio.com"
                     />
                   </div>
@@ -1527,7 +1539,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                     <input
                       value={backgroundLinks.linkedinUrl}
                       onChange={(e) => setBackgroundLinks((prev) => ({ ...prev, linkedinUrl: e.target.value }))}
-                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-qc-blue/25"
                       placeholder="https://www.linkedin.com/in/username"
                     />
                   </div>
@@ -1536,7 +1548,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                     <input
                       value={backgroundLinks.githubUrl}
                       onChange={(e) => setBackgroundLinks((prev) => ({ ...prev, githubUrl: e.target.value }))}
-                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-qc-blue/25"
                       placeholder="https://github.com/username"
                     />
                   </div>
@@ -1545,7 +1557,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                     <input
                       value={backgroundLinks.facebookUrl}
                       onChange={(e) => setBackgroundLinks((prev) => ({ ...prev, facebookUrl: e.target.value }))}
-                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-qc-blue/25"
                       placeholder="https://facebook.com/username"
                     />
                   </div>
@@ -1554,7 +1566,7 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                     <input
                       value={backgroundLinks.instagramUrl}
                       onChange={(e) => setBackgroundLinks((prev) => ({ ...prev, instagramUrl: e.target.value }))}
-                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-qc-blue/25"
                       placeholder="https://instagram.com/username"
                     />
                   </div>
@@ -1644,8 +1656,8 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                 <div className="p-6 border border-gray-200 rounded-2xl bg-white md:col-span-2">
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
                     <div>
-                      <h4 className="font-bold text-lg text-gray-900">QC ID Verification</h4>
-                      <p className="text-sm text-gray-500 font-medium">If your QCitizen ID is invalid, you can re-upload it here.</p>
+                      <h4 className="font-bold text-lg text-gray-900">{idSectionTitle}</h4>
+                      <p className="text-sm text-gray-500 font-medium">{idSectionSubtitle}</p>
                     </div>
                     <span className={`inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-black border ${verificationStyles[idVerificationStatus] || verificationStyles.not_submitted}`}>
                       {verificationLabels[idVerificationStatus] || 'Unknown'}
@@ -1666,12 +1678,12 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">QC ID Number</label>
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">{idLabel} Number</label>
                       <input
                         value={idNumberInput}
                         onChange={handleIdNumberInputChange}
-                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Enter your QC ID number or QR payload"
+                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-qc-blue/25"
+                        placeholder={isQcResident ? "Enter your QC ID number or QR payload" : "Enter your ID number"}
                       />
                       {idQrFeedback.message && (
                         <p className={`mt-2 text-xs font-semibold ${idQrFeedback.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
@@ -1714,9 +1726,9 @@ const SeekerDashboard = ({ profile, applications = [], jobs = [], trainings = []
                       type="button"
                       onClick={handleUploadIdDocument}
                       disabled={isIdUploading}
-                      className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+                      className="px-5 py-2.5 bg-qc-blue text-white rounded-xl font-bold hover:bg-[#002d8a] disabled:opacity-50 transition-colors"
                     >
-                      {isIdUploading ? 'Uploading...' : (canReuploadId ? 'Re-upload QC ID' : 'Upload QC ID')}
+                      {isIdUploading ? 'Uploading...' : (canReuploadId ? `Re-upload ${idLabel}` : `Upload ${idLabel}`)}
                     </button>
                     {idVerificationStatus === 'pending' && (
                       <span className="text-sm text-blue-600 font-semibold self-center">Verification is running in the background.</span>

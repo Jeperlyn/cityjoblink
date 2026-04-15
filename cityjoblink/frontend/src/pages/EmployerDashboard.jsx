@@ -5,7 +5,7 @@ import {
     Edit3, User, X, FileText, ChevronUp, ChevronDown, AlertCircle,
     CheckCircle, UploadCloud, Clock, MapPin, Globe, Phone, Eye, ExternalLink,
     CreditCard, Calendar, Smile, Mail, BookOpen, Star, Filter, TrendingUp,
-    Target, ArrowRight, LayoutGrid, List, XCircle, Info
+    Target, ArrowRight, LayoutGrid, List, XCircle, Info, Users
 } from 'lucide-react';
 import { API_BASE, buildBackendUrl } from '../lib/apiBase';
 import { EDUCATION_MINIMUM_OPTIONS, normalizeMinimumEducationRequirement } from '../lib/educationLevels';
@@ -97,7 +97,7 @@ const getMatchTextColorClass = (score) => {
     return 'text-red-500';
 };
 
-const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, onUpdateJob, onUpdateProfile, onUploadDocs, onOpenChat, onUpdateStatus }) => {
+const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, onUpdateJob, onUpdateProfile, onUploadDocs, onOpenChat, onUpdateStatus, notify, jobFairs = [], onRegisterJobFair, onWithdrawJobFair }) => {
     const [activeTab, setActiveTab] = useState('overview');
 
     const [newJob, setNewJob] = useState({ title: '', salaryMin: '', salaryMax: '', location: '', type: 'Full-time', requiredSkills: [], educationalAttainmentRequired: '', description: '' });
@@ -655,27 +655,37 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
     const isProfileInfoComplete = profile?.industry && (profile?.address || profile?.companyAddress || profile?.company_address);
 
     return (
-        <div className="flex min-h-screen bg-gray-50">
+        <div className="flex min-h-screen bg-slate-100">
             {/* SIDEBAR NAVIGATION */}
-            <div className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full">
-                <div className="p-6 border-b">
-                    <h1 className="text-xl font-bold text-blue-600 flex items-center gap-2">
-                        <Building2 size={24} /> Employer Portal
-                    </h1>
+            <div className="w-64 bg-white border-r border-slate-200/80 flex flex-col fixed h-full shadow-sm">
+                {/* Logo / Brand */}
+                <div className="px-5 py-5 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-qc-blue flex items-center justify-center shadow-sm shrink-0">
+                            <Building2 size={16} className="text-white" />
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CityJobLink</p>
+                            <p className="text-sm font-extrabold text-slate-800 leading-none">Employer Portal</p>
+                        </div>
+                    </div>
                 </div>
 
-                <nav className="flex-1 p-4 space-y-2">
-                    <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold transition-colors ${activeTab === 'overview' ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-                        <LayoutDashboard size={18} /> Overview
+                <nav className="flex-1 p-3 space-y-1">
+                    <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'overview' ? 'bg-qc-blue/10 text-qc-blue' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                        <LayoutDashboard size={17} /> Overview
                     </button>
-                    <button onClick={() => setActiveTab('jobs')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold transition-colors ${activeTab === 'jobs' ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-                        <Briefcase size={18} /> My Job Posts
+                    <button onClick={() => setActiveTab('jobs')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'jobs' ? 'bg-qc-blue/10 text-qc-blue' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                        <Briefcase size={17} /> My Job Posts
+                    </button>
+                    <button onClick={() => setActiveTab('jobfairs')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'jobfairs' ? 'bg-qc-blue/10 text-qc-blue' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
+                        <Users size={17} /> Job Fairs
                     </button>
                 </nav>
 
-                <div className="p-4 border-t">
-                    <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold text-red-500 hover:bg-red-50 transition-colors">
-                        <LogOut size={18} /> Logout
+                <div className="p-3 border-t border-slate-100">
+                    <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-500 hover:text-red-500 hover:bg-red-50 transition-all">
+                        <LogOut size={17} /> Logout
                     </button>
                 </div>
             </div>
@@ -686,37 +696,46 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                 {/* VIEW 1: OVERVIEW */}
                 {activeTab === 'overview' && (
                     <div className="space-y-6">
-                        <div className="flex justify-between items-center">
-                            <h2 className="text-2xl font-bold text-gray-900">Welcome, {profile?.name || profile?.companyName || profile?.company_name || 'Employer'}!</h2>
-                            <button onClick={() => { setActiveTab('post_job'); setJobPostError(null); }} className="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold shadow-md hover:bg-blue-700 flex items-center gap-2">
-                                <Edit3 size={18} /> Post a New Job
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <div>
+                                <p className="section-label mb-1">Employer</p>
+                                <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight">
+                                    Welcome, {profile?.companyName || profile?.company_name || profile?.name || 'Employer'}
+                                </h2>
+                            </div>
+                            <button onClick={() => { setActiveTab('post_job'); setJobPostError(null); }} className="btn-primary shrink-0">
+                                <Edit3 size={16} /> Post a New Job
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <div className="bg-white p-6 rounded-xl border shadow-sm">
-                                <p className="text-gray-500 text-sm font-bold uppercase">Active Jobs</p>
-                                <p className="text-3xl font-black mt-1">{myJobs.length}</p>
-                            </div>
-                            <div className="bg-white p-6 rounded-xl border shadow-sm">
-                                <p className="text-gray-500 text-sm font-bold uppercase">Pending Applicants</p>
-                                <p className="text-3xl font-black mt-1">{pendingApplicantCount}</p>
-                            </div>
-                            <div className="bg-white p-6 rounded-xl border shadow-sm">
-                                <p className="text-gray-500 text-sm font-bold uppercase">Total Applicants</p>
-                                <p className="text-3xl font-black mt-1">{applications?.length || 0}</p>
-                            </div>
-                            <div className="bg-white p-6 rounded-xl border shadow-sm flex flex-col justify-between">
-                                <p className="text-gray-500 text-sm font-bold uppercase">Profile Status</p>
-                                {!isProfileInfoComplete ? (
-                                    <span className="text-red-500 font-bold flex items-center gap-1 mt-1 animate-bounce"><AlertCircle size={16} /> Incomplete Info</span>
-                                ) : employerVerificationStatus === 'verified' || profile?.isVerified ? (
-                                    <span className="text-green-500 font-bold flex items-center gap-1 mt-1"><CheckCircle size={16} /> Complete & Verified</span>
-                                ) : employerVerificationStatus === 'under_review' ? (
-                                    <span className="text-orange-500 font-bold flex items-center gap-1 mt-1"><Clock size={16} /> Pending Admin Review</span>
-                                ) : (
-                                    <span className="text-amber-600 font-bold flex items-center gap-1 mt-1"><Info size={16} /> Pending Document Completion</span>
-                                )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+                            {[
+                                { label: 'Active Jobs', value: myJobs.length, accent: 'bg-qc-blue' },
+                                { label: 'Pending Applicants', value: pendingApplicantCount, accent: 'bg-amber-400' },
+                                { label: 'Total Applicants', value: applications?.length || 0, accent: 'bg-emerald-500' },
+                            ].map(card => (
+                                <div key={card.label} className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                                    <div className={`h-1 ${card.accent} w-full`} />
+                                    <div className="p-5">
+                                        <p className="section-label mb-2">{card.label}</p>
+                                        <p className="text-3xl font-extrabold text-gray-900">{card.value}</p>
+                                    </div>
+                                </div>
+                            ))}
+                            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                                <div className={`h-1 ${(!isProfileInfoComplete) ? 'bg-red-400' : (employerVerificationStatus === 'verified' || profile?.isVerified) ? 'bg-emerald-500' : 'bg-amber-400'} w-full`} />
+                                <div className="p-5">
+                                    <p className="section-label mb-2">Profile Status</p>
+                                    {!isProfileInfoComplete ? (
+                                        <span className="text-red-500 font-bold flex items-center gap-1.5 text-sm"><AlertCircle size={15} /> Incomplete Info</span>
+                                    ) : employerVerificationStatus === 'verified' || profile?.isVerified ? (
+                                        <span className="text-emerald-600 font-bold flex items-center gap-1.5 text-sm"><CheckCircle size={15} /> Verified</span>
+                                    ) : employerVerificationStatus === 'under_review' ? (
+                                        <span className="text-orange-500 font-bold flex items-center gap-1.5 text-sm"><Clock size={15} /> Under Review</span>
+                                    ) : (
+                                        <span className="text-amber-600 font-bold flex items-center gap-1.5 text-sm"><Info size={15} /> Docs Pending</span>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -825,7 +844,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                 )}
                             </div>
                             <div className="p-3 bg-gray-50 text-center border-t">
-                                <button onClick={() => setActiveTab('jobs')} className="text-xs font-bold text-blue-600 flex items-center gap-1 mx-auto hover:underline">
+                                <button onClick={() => setActiveTab('jobs')} className="text-xs font-bold text-qc-blue flex items-center gap-1 mx-auto hover:underline">
                                     View all applications <ArrowRight size={12} />
                                 </button>
                             </div>
@@ -1036,7 +1055,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                                                             <button onClick={() => s && setViewApplicant(s)} className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-md" title="View Document"><FileText size={16}/></button>
                                                                                         </div>
                                                                                         <select 
-                                                                                            className="text-xs font-bold border rounded-md p-1.5 bg-gray-50 outline-none focus:ring-1 focus:ring-blue-500" 
+                                                                                            className="text-xs font-bold border rounded-md p-1.5 bg-gray-50 outline-none focus:ring-1 focus:ring-qc-blue/25" 
                                                                                             value={app.status} 
                                                                                             onChange={(e) => handleStatusChange(app.id, e.target.value)}
                                                                                         >
@@ -1155,7 +1174,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                             <div className="grid md:grid-cols-2 gap-6">
                                 <div>
                                     <label className="text-xs font-black text-gray-400 uppercase mb-2 block">Company Name</label>
-                                    <input className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none transition-all" value={editProfileData.companyName} onChange={e => setEditProfileData({ ...editProfileData, companyName: e.target.value })} />
+                                    <input className="w-full p-3 border rounded-xl bg-gray-50 focus:ring-2 focus:ring-qc-blue/25 outline-none transition-all" value={editProfileData.companyName} onChange={e => setEditProfileData({ ...editProfileData, companyName: e.target.value })} />
                                 </div>
                                 <div>
                                     <label className="text-xs font-black text-gray-400 uppercase mb-2 block">Industry *</label>
@@ -1192,7 +1211,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                 </div>
                             </div>
 
-                            <button onClick={handleSaveProfile} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all active:scale-95">Save Profile Information</button>
+                            <button onClick={handleSaveProfile} className="w-full bg-qc-blue text-white py-4 rounded-xl font-bold text-lg hover:bg-[#002d8a] shadow-md transition-all active:scale-[0.98]">Save Profile Information</button>
                         </div>
                     </div>
                 )}
@@ -1214,8 +1233,8 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
 
                         <div className="space-y-5">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <input className="w-full p-3.5 border border-gray-200 rounded-lg bg-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Job Title" value={newJob.title} onChange={e => { const cleanValue = e.target.value.replace(/[^a-zA-Z0-9\s,.\-&]/g, ''); setNewJob({ ...newJob, title: cleanValue }); }} />
-                                <select className="w-full p-3.5 border border-gray-200 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none" value={newJob.location} onChange={e => setNewJob({ ...newJob, location: e.target.value })}>
+                                <input className="w-full p-3.5 border border-gray-200 rounded-lg bg-white placeholder-gray-400 focus:ring-2 focus:ring-qc-blue/25 outline-none" placeholder="Job Title" value={newJob.title} onChange={e => { const cleanValue = e.target.value.replace(/[^a-zA-Z0-9\s,.\-&]/g, ''); setNewJob({ ...newJob, title: cleanValue }); }} />
+                                <select className="w-full p-3.5 border border-gray-200 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-qc-blue/25 outline-none" value={newJob.location} onChange={e => setNewJob({ ...newJob, location: e.target.value })}>
                                     <option value="">Select Job Location</option>
                                     {jobLocationOptions.map((group) => (
                                         <optgroup key={group.label} label={group.label}>
@@ -1228,21 +1247,21 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <select className="w-full p-3.5 border border-gray-200 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none" value={newJob.salaryMin} onChange={e => setNewJob({ ...newJob, salaryMin: Number(e.target.value) })}>
+                                <select className="w-full p-3.5 border border-gray-200 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-qc-blue/25 outline-none" value={newJob.salaryMin} onChange={e => setNewJob({ ...newJob, salaryMin: Number(e.target.value) })}>
                                     <option value="">Minimum Salary</option>
                                     {salaryOptions.map(val => <option key={val} value={val}>₱{val.toLocaleString()}</option>)}
                                 </select>
-                                <select className="w-full p-3.5 border border-gray-200 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none" value={newJob.salaryMax} onChange={e => setNewJob({ ...newJob, salaryMax: Number(e.target.value) })}>
+                                <select className="w-full p-3.5 border border-gray-200 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-qc-blue/25 outline-none" value={newJob.salaryMax} onChange={e => setNewJob({ ...newJob, salaryMax: Number(e.target.value) })}>
                                     <option value="">Maximum Salary</option>
                                     {salaryOptions.filter(v => v >= newJob.salaryMin).map(val => <option key={val} value={val}>₱{val.toLocaleString()}</option>)}
                                 </select>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <select className="w-full p-3.5 border border-gray-200 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none" value={newJob.type} onChange={e => setNewJob({ ...newJob, type: e.target.value })}>
+                                <select className="w-full p-3.5 border border-gray-200 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-qc-blue/25 outline-none" value={newJob.type} onChange={e => setNewJob({ ...newJob, type: e.target.value })}>
                                     <option>Full-time</option><option>Part-time</option><option>Contract</option><option>Freelance</option>
                                 </select>
-                                <select className="w-full p-3.5 border border-gray-200 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none" value={newJob.educationalAttainmentRequired} onChange={e => setNewJob({ ...newJob, educationalAttainmentRequired: e.target.value })}>
+                                <select className="w-full p-3.5 border border-gray-200 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-qc-blue/25 outline-none" value={newJob.educationalAttainmentRequired} onChange={e => setNewJob({ ...newJob, educationalAttainmentRequired: e.target.value })}>
                                     <option value="">Educational Attainment (Optional)</option>
                                     {EDUCATION_MINIMUM_OPTIONS.map((option) => (
                                         <option key={option.level} value={option.storedValue}>{option.label}</option>
@@ -1250,7 +1269,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                 </select>
                             </div>
 
-                            <textarea className="w-full p-3.5 border border-gray-200 rounded-lg bg-white placeholder-gray-400 h-44 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Job Description & Responsibilities..." value={newJob.description} onChange={e => setNewJob({ ...newJob, description: e.target.value })} />
+                            <textarea className="w-full p-3.5 border border-gray-200 rounded-lg bg-white placeholder-gray-400 h-44 focus:ring-2 focus:ring-qc-blue/25 outline-none" placeholder="Job Description & Responsibilities..." value={newJob.description} onChange={e => setNewJob({ ...newJob, description: e.target.value })} />
 
                             <div>
                                 <label className="text-[11px] font-black text-gray-500 uppercase tracking-wider mb-2 block">Required Skills (Standard List)</label>
@@ -1304,7 +1323,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                                         addOtherSkill();
                                                     }
                                                 }}
-                                                className="flex-1 p-2.5 border border-gray-200 rounded-lg bg-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 outline-none"
+                                                className="flex-1 p-2.5 border border-gray-200 rounded-lg bg-white placeholder-gray-400 focus:ring-2 focus:ring-qc-blue/25 outline-none"
                                                 placeholder="Add custom skill"
                                             />
                                             <button
@@ -1345,6 +1364,87 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                 {editingJob ? 'Update Job' : 'Post Job Now'}
                             </button>
                         </div>
+                    </div>
+                )}
+
+                {/* VIEW 5: JOB FAIRS */}
+                {activeTab === 'jobfairs' && (
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-2xl font-bold text-gray-900">Job Fairs</h2>
+                        </div>
+
+                        {jobFairs.length === 0 ? (
+                            <div className="py-20 text-center bg-white rounded-xl border border-dashed border-gray-200 text-gray-400">
+                                <Users size={40} className="mx-auto mb-4 opacity-40" />
+                                <p className="font-bold text-lg">No upcoming job fairs</p>
+                                <p className="text-sm mt-1">Check back later for hiring events.</p>
+                            </div>
+                        ) : (
+                            <div className="grid md:grid-cols-2 gap-6">
+                                {jobFairs.map(fair => {
+                                    const companyName = profile?.company_name || profile?.companyName || profile?.name;
+                                    const isParticipating = Array.isArray(fair.companies) && fair.companies.includes(companyName);
+                                    return (
+                                        <div key={fair.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div>
+                                                    <p className="font-bold text-gray-900 text-lg leading-tight">{fair.title}</p>
+                                                    {fair.organizer && (
+                                                        <p className="text-xs text-blue-600 font-semibold mt-1">{fair.organizer}</p>
+                                                    )}
+                                                </div>
+                                                {isParticipating && (
+                                                    <span className="flex items-center gap-1 text-[10px] font-bold bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded-full whitespace-nowrap ml-2">
+                                                        <CheckCircle size={10} /> Confirmed
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-2 text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                                {fair.date && (
+                                                    <div className="flex items-center gap-2">
+                                                        <Calendar size={15} className="text-gray-400" />
+                                                        <span className="font-medium">{fair.date}</span>
+                                                        {fair.time && <span className="text-gray-400">· {fair.time}</span>}
+                                                    </div>
+                                                )}
+                                                {fair.location && (
+                                                    <div className="flex items-center gap-2">
+                                                        <MapPin size={15} className="text-gray-400" />
+                                                        <span className="font-medium">{fair.location}</span>
+                                                    </div>
+                                                )}
+                                                <div className="flex items-center gap-2">
+                                                    <Users size={15} className="text-gray-400" />
+                                                    <span className="font-medium">{fair.companies?.length || 0} companies attending</span>
+                                                </div>
+                                            </div>
+
+                                            {fair.description && (
+                                                <p className="text-gray-500 text-sm line-clamp-2 mb-4">{fair.description}</p>
+                                            )}
+
+                                            {isParticipating ? (
+                                                <button
+                                                    onClick={() => onWithdrawJobFair && onWithdrawJobFair(fair.id)}
+                                                    className="w-full border border-red-200 text-red-600 font-bold py-2.5 px-4 rounded-lg hover:bg-red-50 transition-all text-sm"
+                                                >
+                                                    Cancel Participation
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => onRegisterJobFair && onRegisterJobFair(fair.id)}
+                                                    className="w-full bg-blue-600 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-blue-700 transition-all text-sm"
+                                                >
+                                                    Confirm Participation
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 )}
 

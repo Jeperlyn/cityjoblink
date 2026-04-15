@@ -30,7 +30,6 @@ const Toast = ({ messages }) => (
 
 // Import Components
 import Navbar from './components/Navbar';
-import InstitutionalFooter from './components/InstitutionalFooter';
 import LandingPage, { PublicListings } from './pages/LandingPage';
 import LoginScreen from './pages/Login'; 
 import SeekerDashboard, { FindJobs, JobDetailsPage, DashboardOverview } from './pages/SeekerDashboard';
@@ -68,7 +67,7 @@ const normalizeUserProfile = (rawUser) => {
         ...rawUser,
         companyName: rawUser.companyName || rawUser.company_name || null,
         qcId: rawUser.qcId || rawUser.qc_id || '',
-        isQcResident: typeof rawUser.isQcResident === 'boolean' ? rawUser.isQcResident : true,
+        isQcResident: typeof rawUser.isQcResident === 'boolean' ? rawUser.isQcResident : (rawUser.is_qc_resident != null ? Boolean(rawUser.is_qc_resident) : false),
         birthdayDisplay: rawUser.birthdayDisplay || rawUser.birthday_display || null,
         isVerified: typeof rawUser.isVerified === 'boolean' ? rawUser.isVerified : !!rawUser.is_verified,
         employerVerificationStatus: rawUser.employerVerificationStatus || rawUser.employer_verification_status || null,
@@ -399,6 +398,19 @@ const App = () => {
     useEffect(() => { localStorage.setItem('cjl_jobfairs', JSON.stringify(jobFairs)); }, [jobFairs]);
     useEffect(() => { localStorage.setItem('cjl_saved_jobs', JSON.stringify(savedJobs)); }, [savedJobs]);
 
+    // Automatically fetch Job Fairs when the app loads
+    useEffect(() => {
+        const loadFairs = async () => {
+            try {
+                const fairs = await fetchJobFairsData();
+                setJobFairs(fairs);
+            } catch (error) {
+                console.error("Error loading job fairs from DB:", error);
+            }
+        };
+        loadFairs();
+    }, []);
+
     const fetchSeekerProfile = async (email) => {
         const response = await fetch(`${API_BASE}/seeker/profile?email=${encodeURIComponent(email)}`, {
             headers: { Accept: 'application/json' },
@@ -412,7 +424,6 @@ const App = () => {
         });
     };
 
-    // Fetch Saved Jobs API Call
     const fetchSavedJobs = async (email) => {
         try {
             const response = await fetch(`${API_BASE}/seeker/saved-jobs?email=${encodeURIComponent(email)}`, {
@@ -429,13 +440,35 @@ const App = () => {
         }
     };
 
-    // ✅ FEATURE FIX: Added includeClosed parameter so employers can see closed jobs after updating them
     const fetchJobs = async (includeClosed = false) => {
         const url = includeClosed ? `${API_BASE}/jobs?include_closed=1` : `${API_BASE}/jobs`;
         const response = await fetch(url, { headers: { Accept: 'application/json' } });
         const data = await response.json();
         if (!response.ok || data.status !== 'success') throw new Error(data?.message || 'Failed loading jobs');
         return (data.jobs || []).map(mapBackendJob);
+    };
+
+    const fetchJobFairsData = async () => {
+        const response = await fetch(`${API_BASE}/job-fairs`, { headers: { Accept: 'application/json' } });
+        const data = await response.json();
+        if (!response.ok) throw new Error('Failed loading job fairs');
+        
+        return data.map(fair => ({
+            ...fair,
+            id: fair.id,
+            title: fair.title,
+            date: fair.event_date || fair.date, 
+            time: fair.time,
+            location: fair.location,
+            organizer: fair.organizer,
+            description: fair.description,
+            highlights: Array.isArray(fair.highlights) ? fair.highlights : [],
+            companies: Array.isArray(fair.companies) ? fair.companies : [],
+            participants: Array.isArray(fair.participants) ? fair.participants : [],
+            image: (fair.image_url || fair.image) 
+                ? `http://localhost:8000${fair.image_url || fair.image}` 
+                : null,
+        }));
     };
 
     const fetchAdminEmployers = async () => {
@@ -1008,7 +1041,6 @@ const App = () => {
     const handleRegisterTraining = async (trainingId) => {
         if (!user) return setCurrentView('login');
         
-        // Check if already registered
         const training = trainings.find(t => t.id === trainingId);
         if (!training) {
             showToast('Training not found', 'error');
@@ -1084,33 +1116,79 @@ const App = () => {
         }
     };
 
-    const handleRegisterJobFair = (jobFairId) => {
-        if (!user) return setCurrentView('login');
+    // ✅ ADDED: Global API Function for Joining Job Fairs (Works for both Seekers and Employers)
+    const handleRegisterJobFair = async (jobFairId) => {
+        if (!user) {
+            setCurrentView('login');
+            return;
+        }
         
-        // Check if already registered
         const jobFair = jobFairs.find(f => f.id === jobFairId);
         if (!jobFair) {
             showToast('Job Fair not found', 'error');
             return;
         }
         
-        if (jobFair.participants?.includes(user.id)) {
+        if (user.role === 'Seeker' && jobFair.participants?.includes(user.id)) {
             showToast('You are already registered for this job fair!', 'warning');
             return;
         }
-        
-        // Add user to participants
-        setJobFairs(prev => prev.map(f => 
-            f.id === jobFairId 
-                ? { 
-                    ...f, 
-                    participants: [...(f.participants || []), user.id]
-                  }
-                : f
-        ));
-        
-        showToast(`Registered for ${jobFair.title}! ✓`, 'success');
-        setCurrentView('seeker-dash');
+        if (user.role === 'Employer' && jobFair.companies?.includes(user.companyName || user.name)) {
+            showToast('Your company is already attending this job fair!', 'warning');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/job-fairs/join`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                    email: user.email,
+                    job_fair_id: jobFairId,
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data?.message || 'Failed to join Job Fair.');
+            }
+            
+            // Refresh data from the server so the counts go up instantly
+            const refreshedFairs = await fetchJobFairsData();
+            setJobFairs(refreshedFairs);
+            
+            showToast(data.message || `Successfully joined ${jobFair.title}! ✓`, 'success');
+            
+            if (user.role === 'Seeker') setCurrentView('seeker-dash');
+            if (user.role === 'Employer') setCurrentView('employer-dash');
+
+        } catch (error) {
+            showToast(error?.message || 'Failed to join job fair.', 'error');
+        }
+    };
+
+    const handleWithdrawJobFair = async (jobFairId) => {
+        if (!user?.email) return false;
+        const jobFair = jobFairs.find(f => f.id === jobFairId);
+        try {
+            const response = await fetch(`${API_BASE}/job-fairs/leave`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({ email: user.email, job_fair_id: jobFairId }),
+            });
+            const data = await response.json();
+            if (!response.ok || data.status !== 'success') throw new Error(data?.message || 'Failed to withdraw.');
+            const refreshedFairs = await fetchJobFairsData();
+            setJobFairs(refreshedFairs);
+            showToast(`Withdrawn from ${jobFair?.title || 'job fair'}.`, 'success');
+            return true;
+        } catch (error) {
+            showToast(error?.message || 'Failed to withdraw from job fair.', 'error');
+            return false;
+        }
     };
 
     const handleSendMessage = async (toId, content) => {
@@ -1312,7 +1390,7 @@ const App = () => {
                 throw new Error(data?.message || 'Failed to post job.');
             }
 
-            const refreshedJobs = await fetchJobs(true); // Ensure employer gets refreshed closed jobs too
+            const refreshedJobs = await fetchJobs(true);
             setJobs(refreshedJobs);
             showToast('Job posted successfully.', 'success');
             return true;
@@ -1346,7 +1424,7 @@ const App = () => {
                     salary_max: updatedJobPayload.salaryMax ?? null,
                     educational_attainment_required: updatedJobPayload.educationalAttainmentRequired || null,
                     industry: user.industry || null,
-                    status: updatedJobPayload.status, // THIS IS THE LINE THAT FIXES THE TOGGLE
+                    status: updatedJobPayload.status, 
                 }),
             });
 
@@ -1355,7 +1433,6 @@ const App = () => {
                 throw new Error(data?.message || 'Failed to update job.');
             }
 
-            // ✅ Passed 'true' here to ensure the closed job stays in the list!
             const refreshedJobs = await fetchJobs(user?.role === 'Employer');
             setJobs(refreshedJobs);
             showToast('Job updated successfully.', 'success');
@@ -1366,8 +1443,53 @@ const App = () => {
         }
     };
 
+    const handleAddJobFair = async (jobFairData) => {
+        if (!user?.email) {
+            showToast('Missing admin email.', 'error');
+            return false;
+        }
+
+        const formData = new FormData();
+        formData.append('title', jobFairData.title);
+        formData.append('date', jobFairData.date);
+        formData.append('time', jobFairData.time);
+        formData.append('location', jobFairData.location);
+        formData.append('organizer', jobFairData.organizer || 'PESO QC & DOLE');
+        formData.append('description', jobFairData.description);
+        
+        formData.append('highlights', JSON.stringify(jobFairData.highlights));
+
+        if (jobFairData.imageFile) {
+            formData.append('image', jobFairData.imageFile);
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/job-fairs`, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                },
+                body: formData,
+            });
+
+            const data = await response.json();
+            
+            if (!response.ok || data.status !== 'success') {
+                throw new Error(data?.message || 'Failed to create Job Fair in database.');
+            }
+
+            setJobFairs(prev => [data.job_fair, ...prev]);
+            
+            showToast('Job Fair created successfully!', 'success');
+            return true;
+        } catch (error) {
+            console.error('Job Fair Error:', error);
+            showToast(error?.message || 'Failed to connect to server.', 'error');
+            return false;
+        }
+    };
+
     const renderContent = () => {
-        // 1. PUBLIC VIEWS
         if (currentView === 'home') return <LandingPage onNavigate={handleNavigate} />;
         if (currentView === 'trainings' || currentView === 'public-trainings') {
             return <PublicListings type="trainings" data={trainings} user={user} onRegister={handleRegisterTraining} />;
@@ -1376,10 +1498,8 @@ const App = () => {
             return <PublicListings type="jobfairs" data={jobFairs} user={user} onRegister={handleRegisterJobFair} />;
         }
 
-        // 2. AUTH WALL
         if (!user || currentView === 'login') return <LoginScreen onLogin={handleLogin} loginError={loginError} setLoginError={setLoginError} />;
 
-        // 3. PROTECTED VIEWS
         if (currentView === 'seeker-dash') return (
             <SeekerDashboard 
                 profile={user} 
@@ -1395,6 +1515,9 @@ const App = () => {
                 onToggleSaveJob={handleToggleSaveJob}
                 onWithdrawTraining={handleWithdrawTraining}
                 onSubmitEmployerFeedback={handleSubmitEmployerFeedback}
+                // ✅ PASSING DOWN THE JOIN FUNCTION TO SEEKER
+                onRegisterJobFair={handleRegisterJobFair}
+                onWithdrawJobFair={handleWithdrawJobFair}
                 onUpdateProfile={(updatedUser) => {
                     const normalized = normalizeUserProfile(updatedUser);
                     setUser(normalized);
@@ -1404,9 +1527,9 @@ const App = () => {
             />
         );
 
-        if (currentView === 'employer-dash') return <EmployerDashboard profile={user} jobs={jobs} applications={applications} seekers={employerSeekers} onPostJob={handlePostJob} onUpdateJob={handleUpdateJob} onUpdateStatus={handleUpdateAppStatus} onUpdateProfile={(u)=>setUser(normalizeUserProfile(u))} onUploadDocs={handleUploadEmployerDocs} onOpenChat={(id)=>{setTargetChatId(id); setCurrentView('messages');}} notify={showToast} />;
+        if (currentView === 'employer-dash') return <EmployerDashboard profile={user} jobs={jobs} applications={applications} seekers={employerSeekers} onPostJob={handlePostJob} onUpdateJob={handleUpdateJob} onUpdateStatus={handleUpdateAppStatus} onUpdateProfile={(u)=>setUser(normalizeUserProfile(u))} onUploadDocs={handleUploadEmployerDocs} onOpenChat={(id)=>{setTargetChatId(id); setCurrentView('messages');}} notify={showToast} jobFairs={jobFairs || []} onRegisterJobFair={handleRegisterJobFair} onWithdrawJobFair={handleWithdrawJobFair} />;
         
-        if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} seekers={adminSeekers} analytics={adminAnalytics} onVerifyEmployer={handleVerifyEmployer} onReviewSeeker={handleReviewSeekerId} jobFairs={jobFairs} onAddJobFair={()=>{}} notify={showToast} />;
+        if (currentView === 'admin-dash') return <AdminDashboard employers={adminEmployers} seekers={adminSeekers} analytics={adminAnalytics} onVerifyEmployer={handleVerifyEmployer} onReviewSeeker={handleReviewSeekerId} jobFairs={jobFairs} onAddJobFair={handleAddJobFair} notify={showToast} />;
         
         if (currentView === 'matchmaker') return <FindJobs jobs={jobs} recommendations={seekerRecommendations || []} onApply={handleApply} applications={applications} userId={user.id} profile={user} savedJobs={savedJobs || []} onToggleSaveJob={handleToggleSaveJob} onGoToProfile={() => { setSeekerActiveTab('profile'); setCurrentView('seeker-dash'); setTimeout(() => { document.getElementById('resume-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); }} onJobClick={(j) => { setSelectedJob(j); setPreviousView('matchmaker'); setCurrentView('job-details'); }} />;
         
@@ -1450,7 +1573,6 @@ const App = () => {
             <main className="flex-1">
                 {renderContent()}
             </main>
-            <InstitutionalFooter />
             <Toast messages={toastMessages} />
         </div>
     );
