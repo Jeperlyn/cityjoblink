@@ -16,6 +16,7 @@ return [
 'allowed_origins' => [
     'http://localhost:5173', 
     'https://cityjoblink-frontend.vercel.app', // Your Vercel frontend
+    'https://cityjoblink-frontend-g4t7rtauq-jeperlyns-projects.vercel.app',
     'https://choosy-showroom-baking.ngrok-free.dev', // Your new public API
 ],
     'allowed_origins_patterns' => [],
