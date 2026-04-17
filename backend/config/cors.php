@@ -15,7 +15,7 @@ return [
     // We changed this to '*' to allow your friend's IP to talk to your database
 'allowed_origins' => [
     'http://localhost:5173', 
-    'https://cityjoblink.vercel.app', // Your Vercel frontend
+    'https://cityjoblink-frontend-g4t7rtauq-jeperlyns-projects.vercel.app', // Your Vercel frontend
     'https://choosy-showroom-baking.ngrok-free.dev', // Your new public API
 ],
     'allowed_origins_patterns' => [],
