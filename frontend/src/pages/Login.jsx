@@ -397,7 +397,6 @@ const handleSubmit = async (e) => {
             registrationPayload.append('password', formData.password || '');
             registrationPayload.append('password_confirmation', formData.confirmPassword || '');
             registrationPayload.append('role', role);
-
             if (role === 'Seeker' && formData.qcIdFile) {
                 registrationPayload.append('qcIdFile', formData.qcIdFile);
             }
@@ -442,7 +441,8 @@ const handleSubmit = async (e) => {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json' 
+                    'Accept': 'application/json',
+                    'ngrok-skip-browser-warning': '69420'
                 },
                 body: JSON.stringify({ email: formData.email, password: formData.password })
             });
