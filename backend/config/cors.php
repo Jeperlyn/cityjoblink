@@ -12,8 +12,11 @@ return [
 
     'allowed_methods' => ['*'],
 
-    // We changed this to '*' to allow your friend's IP to talk to your database
-'allowed_origins' => ['*'],
+    'allowed_origins' => [
+        'https://cityjoblink-frontend-jrarclef0-jeperlyns-projects.vercel.app',
+        'http://localhost:5173',
+        'http://localhost:3000',
+    ],
     'allowed_origins_patterns' => [],
 
     'allowed_headers' => ['*'],
