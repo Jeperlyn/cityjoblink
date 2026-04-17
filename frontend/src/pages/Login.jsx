@@ -245,7 +245,8 @@ const Login = ({ onLogin }) => {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'Accept': 'application/json' 
+                        'Accept': 'application/json',
+                        'ngrok-skip-browser-warning': 'true',
                     },
                     body: JSON.stringify({ email: formData.email, otp: otpCode })
                 });
@@ -289,7 +290,8 @@ const Login = ({ onLogin }) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Accept': 'application/json',
+                    'ngrok-skip-browser-warning': 'true'
                 },
                 body: JSON.stringify({ email: formData.email })
             });
@@ -336,7 +338,8 @@ const Login = ({ onLogin }) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Accept': 'application/json',
+                    'ngrok-skip-browser-warning': 'true',
                 },
                 body: JSON.stringify({
                     email: formData.email,
@@ -410,7 +413,8 @@ const handleSubmit = async (e) => {
             const regResponse = await fetch(`${API_BASE}/register`, {
                 method: 'POST',
                 headers: { 
-                    'Accept': 'application/json'
+                    'Accept': 'application/json',
+                    'ngrok-skip-browser-warning': 'true'
                 },
                 body: registrationPayload
             });
