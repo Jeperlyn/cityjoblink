@@ -418,10 +418,15 @@ const handleSubmit = async (e) => {
                 },
                 body: registrationPayload
             });
-            
-            const regData = await regResponse.json();
-            
-            if (regData.status === 'success') {
+
+            let regData = {};
+            try {
+                regData = await regResponse.json();
+            } catch (parseError) {
+                regData = {};
+            }
+
+            if (regResponse.ok && regData.status === 'success') {
 // Trigger the OTP screen
                 setIsOtpStep(true); 
                 const successMessage = regData.dev_otp
@@ -429,10 +434,16 @@ const handleSubmit = async (e) => {
                     : (regData.message || `We sent a verification code to ${formData.email}.`);
                 setModal({ type: 'success', title: 'Code Sent!', message: successMessage });
             } else {
-                setModal({ type: 'error', title: 'Registration Error', message: regData.message || "Email might already be taken." });
+                const fallbackMessage = regResponse.status >= 500
+                    ? 'Server error while creating account. Please try again in a moment.'
+                    : 'Please review your registration details and try again.';
+                setModal({ type: 'error', title: 'Registration Error', message: regData.message || fallbackMessage });
             }
         } catch (err) {
-            const serverMessage = err?.message || "Check your internet or server status.";
+            const isNetworkError = err?.name === 'TypeError';
+            const serverMessage = isNetworkError
+                ? `Cannot reach server (${API_BASE}). Check backend status and CORS settings.`
+                : (err?.message || 'Check your internet or server status.');
             setModal({ type: 'error', title: 'Connection Error', message: serverMessage });
         } finally {
             setIsLoading(false);
@@ -450,15 +461,29 @@ const handleSubmit = async (e) => {
                 },
                 body: JSON.stringify({ email: formData.email, password: formData.password })
             });
-            const data = await response.json();
-            if (data.status === 'success') {
+
+            let data = {};
+            try {
+                data = await response.json();
+            } catch (parseError) {
+                data = {};
+            }
+
+            if (response.ok && data.status === 'success') {
                 localStorage.setItem('user', JSON.stringify(data.user)); 
                 if (onLogin) onLogin('login_success', data.user);
             } else {
-                setModal({ type: 'error', title: 'Login Failed', message: data.message || "Invalid email or password. Please try again." });
+                const fallbackMessage = response.status >= 500
+                    ? 'Server error during login. Please try again shortly.'
+                    : 'Invalid email or password. Please try again.';
+                setModal({ type: 'error', title: 'Login Failed', message: data.message || fallbackMessage });
             }
         } catch (err) {
-            setModal({ type: 'error', title: 'Server Error', message: "Service is temporarily unavailable." });
+            const isNetworkError = err?.name === 'TypeError';
+            const fallbackMessage = isNetworkError
+                ? `Cannot reach server (${API_BASE}). Check backend status and CORS settings.`
+                : (err?.message || 'Service is temporarily unavailable.');
+            setModal({ type: 'error', title: 'Server Error', message: fallbackMessage });
         } finally {
             setIsLoading(false);
         }

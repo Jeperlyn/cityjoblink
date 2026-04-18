@@ -302,23 +302,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
 ```bash
 # Register for training
-curl -X POST http://localhost:8000/api/trainings/1/register \
+curl -X POST http:// 172.20.10.2:8000/api/trainings/1/register \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json"
 
 # Check registration status
-curl -X GET http://localhost:8000/api/trainings/1/is-registered \
+curl -X GET http:// 172.20.10.2:8000/api/trainings/1/is-registered \
   -H "Authorization: Bearer YOUR_TOKEN"
 
 # Withdraw from training
-curl -X DELETE http://localhost:8000/api/trainings/1/withdraw \
+curl -X DELETE http:// 172.20.10.2:8000/api/trainings/1/withdraw \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 ### Test with Postman
 
 1. Create new request (POST)
-2. URL: `http://localhost:8000/api/trainings/1/register`
+2. URL: `http:// 172.20.10.2:8000/api/trainings/1/register`
 3. Headers tab:
    - Authorization: Bearer `YOUR_SANCTUM_TOKEN`
    - Content-Type: application/json

@@ -68,7 +68,7 @@ export const PublicListings = ({ type, data, onRegister, user }) => (
                     ? item.image
                       ? item.image.startsWith('http')
                         ? item.image
-                        : `http://localhost:8000${item.image}`
+                        : `http:// 172.20.10.2:8000${item.image}`
                       : null
                     : undefined
                 }

@@ -464,7 +464,7 @@ const App = () => {
             companies: Array.isArray(fair.companies) ? fair.companies : [],
             participants: Array.isArray(fair.participants) ? fair.participants : [],
             image: (fair.image_url || fair.image) 
-                ? `http://localhost:8000${fair.image_url || fair.image}` 
+                ? `http:// 172.20.10.2:8000${fair.image_url || fair.image}` 
                 : null,
         }));
     };

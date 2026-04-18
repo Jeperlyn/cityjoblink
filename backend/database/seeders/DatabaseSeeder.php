@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             SkillCatalogSeeder::class,
             DeterministicMockUsersSeeder::class,
+            ManpowerJobPostingsSeeder::class,
         ]);
 
         User::updateOrCreate([
