@@ -1465,22 +1465,53 @@ class FeatureController extends Controller
 
         $metrics = $this->calculateMatchMetricsForJobAndSeeker($job, $user);
         $n8nMatch = $this->getLatestN8nMatch((int) $job->id, (int) $user->id);
+        $reasonEvidence = $this->parseMatchReasonEvidence($n8nMatch?->match_reasons);
+
+        $matchedSkills = $this->mergeSkillEvidence(
+            $metrics['matched_skills'],
+            $reasonEvidence['matched_skills'] ?? []
+        );
+
+        $missingSkills = $this->mergeSkillEvidence(
+            $metrics['missing_skills'],
+            $reasonEvidence['missing_skills'] ?? []
+        );
 
         if ($n8nMatch && $metrics['education_match'] !== false) {
             $metrics['score'] = (int) $n8nMatch->match_score;
         }
 
+        $reasonMatchedCount = (int) ($reasonEvidence['skills_matched'] ?? 0);
+        $reasonRequiredCount = (int) ($reasonEvidence['skills_required'] ?? 0);
+
+        $reasonEvidence['unlisted_matched_count'] = max(0, $reasonMatchedCount - count($matchedSkills));
+        $reasonEvidence['unlisted_matched_skills'] = $this->extractUnlistedSkillNames(
+            $reasonEvidence['matched_skills'] ?? [],
+            $matchedSkills,
+            $reasonEvidence['unlisted_matched_count']
+        );
+        $reasonEvidence['unlisted_missing_count'] = max(0, max(0, $reasonRequiredCount - $reasonMatchedCount) - count($missingSkills));
+
+        $reasonEvidence = $this->enrichMatchEvidence(
+            $reasonEvidence,
+            $job,
+            $user,
+            $matchedSkills,
+            $missingSkills
+        );
+
         return response()->json([
             'status' => 'success',
             'score' => $metrics['score'],
-            'matched_skills' => $metrics['matched_skills'],
-            'missing_skills' => $metrics['missing_skills'],
+            'matched_skills' => $matchedSkills,
+            'missing_skills' => $missingSkills,
             'required_skills_count' => $metrics['required_skills_count'],
             'user_skills_count' => $metrics['user_skills_count'],
             'education_match' => $metrics['education_match'],
             'job_required_education' => $metrics['job_required_education'],
             'user_education' => $metrics['user_education'],
             'match_reasons' => $n8nMatch?->match_reasons,
+            'match_evidence' => $reasonEvidence,
         ]);
     }
 
@@ -1628,14 +1659,55 @@ class FeatureController extends Controller
                 ];
 
                 $metrics = $this->calculateMatchMetricsForJobAndSeeker($job, $seeker);
+                $reasonEvidence = $this->parseMatchReasonEvidence($item->n8n_match_reasons);
+
+                $matchedSkills = $this->mergeSkillEvidence(
+                    $metrics['matched_skills'],
+                    $reasonEvidence['matched_skills'] ?? []
+                );
+
+                $missingSkills = $this->mergeSkillEvidence(
+                    $metrics['missing_skills'],
+                    $reasonEvidence['missing_skills'] ?? []
+                );
+
+                $reasonMatchedCount = (int) ($reasonEvidence['skills_matched'] ?? 0);
+                $reasonRequiredCount = (int) ($reasonEvidence['skills_required'] ?? 0);
+
+                $reasonEvidence['unlisted_matched_count'] = max(0, $reasonMatchedCount - count($matchedSkills));
+                $reasonEvidence['unlisted_matched_skills'] = $this->extractUnlistedSkillNames(
+                    $reasonEvidence['matched_skills'] ?? [],
+                    $matchedSkills,
+                    $reasonEvidence['unlisted_matched_count']
+                );
+                $reasonEvidence['unlisted_missing_count'] = max(0, max(0, $reasonRequiredCount - $reasonMatchedCount) - count($missingSkills));
+
+                $jobForEvidence = (object) [
+                    'title' => $item->job_title,
+                    'required_skills' => $item->required_skills,
+                ];
+
+                $seekerForEvidence = (object) [
+                    'resume_text' => $item->seeker_resume_text,
+                    'parsed_skill' => $item->seeker_parsed_skill,
+                ];
+
+                $reasonEvidence = $this->enrichMatchEvidence(
+                    $reasonEvidence,
+                    $jobForEvidence,
+                    $seekerForEvidence,
+                    $matchedSkills,
+                    $missingSkills
+                );
 
                 $item->fit_score = $item->n8n_match_score !== null
                     ? (int) $item->n8n_match_score
                     : $metrics['score'];
-                $item->matched_skills = $metrics['matched_skills'];
-                $item->missing_skills = $metrics['missing_skills'];
+                $item->matched_skills = $matchedSkills;
+                $item->missing_skills = $missingSkills;
                 $item->education_match = $metrics['education_match'];
                 $item->match_reasons = $item->n8n_match_reasons;
+                $item->match_evidence = $reasonEvidence;
 
                 if ($metrics['education_match'] === false) {
                     $item->fit_score = 0;
@@ -2186,6 +2258,269 @@ class FeatureController extends Controller
             ->where('user_id', $userId)
             ->orderByDesc('id')
             ->first(['match_score', 'match_reasons']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function parseMatchReasonEvidence(?string $matchReasons): array
+    {
+        $evidence = [
+            'education_level' => null,
+            'title_alignment_hits' => null,
+            'title_alignment_total' => null,
+            'skills_matched' => null,
+            'skills_required' => null,
+            'weighted_score' => null,
+            'exact' => null,
+            'alias' => null,
+            'parent_group' => null,
+            'grammar' => null,
+            'matched_skills' => [],
+            'missing_skills' => [],
+            'unlisted_matched_skills' => [],
+            'matched_skill_keywords' => [],
+            'missing_skill_keywords' => [],
+            'matched_title_keywords' => [],
+            'missing_title_keywords' => [],
+            'match_type_counts' => [
+                'exact' => 0,
+                'alias' => 0,
+                'parent_group' => 0,
+                'grammar' => 0,
+            ],
+        ];
+
+        $raw = trim((string) ($matchReasons ?? ''));
+        if ($raw === '') {
+            return $evidence;
+        }
+
+        $parts = array_values(array_filter(array_map('trim', explode('|', $raw)), static fn ($part): bool => $part !== ''));
+
+        foreach ($parts as $part) {
+            if (preg_match('/^Education level:\s*(.+)$/i', $part, $matches) === 1) {
+                $evidence['education_level'] = trim((string) $matches[1]);
+                continue;
+            }
+
+            if (preg_match('/^Title alignment:\s*(\d+)\s*\/\s*(\d+)\s*keyword hit\/s$/i', $part, $matches) === 1) {
+                $evidence['title_alignment_hits'] = (int) $matches[1];
+                $evidence['title_alignment_total'] = (int) $matches[2];
+                continue;
+            }
+
+            if (preg_match('/^Skills matched:\s*(\d+)\s*\/\s*(\d+)$/i', $part, $matches) === 1) {
+                $evidence['skills_matched'] = (int) $matches[1];
+                $evidence['skills_required'] = (int) $matches[2];
+                continue;
+            }
+
+            if (preg_match('/^weighted\s*=\s*([0-9]+(?:\.[0-9]+)?)$/i', $part, $matches) === 1) {
+                $evidence['weighted_score'] = (float) $matches[1];
+                continue;
+            }
+
+            if (preg_match('/^exact\s*=\s*(\d+)\s*,\s*alias\s*=\s*(\d+)\s*,\s*parent_group\s*=\s*(\d+)\s*,\s*grammar\s*=\s*(\d+)$/i', $part, $matches) === 1) {
+                $evidence['exact'] = (int) $matches[1];
+                $evidence['alias'] = (int) $matches[2];
+                $evidence['parent_group'] = (int) $matches[3];
+                $evidence['grammar'] = (int) $matches[4];
+
+                $evidence['match_type_counts'] = [
+                    'exact' => $evidence['exact'],
+                    'alias' => $evidence['alias'],
+                    'parent_group' => $evidence['parent_group'],
+                    'grammar' => $evidence['grammar'],
+                ];
+            }
+        }
+
+        if (preg_match('/Matched Skills\s*(.+?)(?:\n\s*Missing Skills|$)/is', $raw, $matches) === 1) {
+            $evidence['matched_skills'] = $this->parseSkillBlock((string) $matches[1]);
+        }
+
+        if (preg_match('/Missing Skills\s*(.+)$/is', $raw, $matches) === 1) {
+            $evidence['missing_skills'] = $this->parseSkillBlock((string) $matches[1]);
+        }
+
+        return $evidence;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function enrichMatchEvidence(array $evidence, object $job, object $user, array $matchedSkills, array $missingSkills): array
+    {
+        $evidence['matched_skill_keywords'] = $this->mergeSkillEvidence(
+            $evidence['matched_skill_keywords'] ?? [],
+            $matchedSkills
+        );
+
+        $evidence['missing_skill_keywords'] = $this->mergeSkillEvidence(
+            $evidence['missing_skill_keywords'] ?? [],
+            $missingSkills
+        );
+
+        $titleEvidence = $this->buildTitleKeywordEvidence(
+            (string) ($job->title ?? ''),
+            (string) ($user->resume_text ?? '')
+        );
+
+        $evidence['matched_title_keywords'] = $this->mergeSkillEvidence(
+            $evidence['matched_title_keywords'] ?? [],
+            $titleEvidence['matched']
+        );
+
+        $evidence['missing_title_keywords'] = $this->mergeSkillEvidence(
+            $evidence['missing_title_keywords'] ?? [],
+            $titleEvidence['missing']
+        );
+
+        if ($evidence['title_alignment_hits'] === null) {
+            $evidence['title_alignment_hits'] = count($evidence['matched_title_keywords']);
+        }
+
+        if ($evidence['title_alignment_total'] === null) {
+            $evidence['title_alignment_total'] = count($evidence['matched_title_keywords']) + count($evidence['missing_title_keywords']);
+        }
+
+        $evidence['match_type_counts'] = [
+            'exact' => (int) ($evidence['exact'] ?? 0),
+            'alias' => (int) ($evidence['alias'] ?? 0),
+            'parent_group' => (int) ($evidence['parent_group'] ?? 0),
+            'grammar' => (int) ($evidence['grammar'] ?? 0),
+        ];
+
+        return $evidence;
+    }
+
+    /**
+     * @return array{matched: array<int, string>, missing: array<int, string>}
+     */
+    private function buildTitleKeywordEvidence(string $title, string $resumeText): array
+    {
+        $normalizedResume = mb_strtolower(trim($resumeText));
+        if ($normalizedResume === '') {
+            $normalizedResume = '';
+        }
+
+        $keywords = array_values(array_unique(array_filter(
+            preg_split('/\s+/u', mb_strtolower(trim($title))) ?: [],
+            static fn ($word): bool => mb_strlen((string) $word) > 3
+        )));
+
+        $matched = [];
+        $missing = [];
+
+        foreach ($keywords as $keyword) {
+            if ($keyword === '') {
+                continue;
+            }
+
+            if ($normalizedResume !== '' && str_contains($normalizedResume, $keyword)) {
+                $matched[] = $keyword;
+            } else {
+                $missing[] = $keyword;
+            }
+        }
+
+        return [
+            'matched' => $matched,
+            'missing' => $missing,
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function parseSkillBlock(string $block): array
+    {
+        $normalized = preg_replace('/[\r\n]+/u', ',', $block) ?? '';
+        $normalized = preg_replace('/[•\-]+/u', ',', $normalized) ?? '';
+
+        $skills = array_filter(array_map(static function ($token): string {
+            $clean = trim((string) $token);
+            $clean = preg_replace('/^matched skills:?/i', '', $clean) ?? $clean;
+            $clean = preg_replace('/^missing skills:?/i', '', $clean) ?? $clean;
+
+            return trim($clean);
+        }, explode(',', $normalized)), static fn ($token): bool => $token !== '');
+
+        return array_values(array_unique($skills));
+    }
+
+    /**
+     * @param array<int, string> $primary
+     * @param array<int, string> $secondary
+     * @return array<int, string>
+     */
+    private function mergeSkillEvidence(array $primary, array $secondary): array
+    {
+        $merged = [];
+        $seen = [];
+
+        foreach (array_merge($primary, $secondary) as $skill) {
+            $label = trim((string) $skill);
+            if ($label === '') {
+                continue;
+            }
+
+            $key = mb_strtolower($label);
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $merged[] = $label;
+        }
+
+        return $merged;
+    }
+
+    /**
+     * @param array<int, string> $reasonMatchedSkills
+     * @param array<int, string> $displayedMatchedSkills
+     * @return array<int, string>
+     */
+    private function extractUnlistedSkillNames(array $reasonMatchedSkills, array $displayedMatchedSkills, int $expectedCount): array
+    {
+        if ($expectedCount <= 0) {
+            return [];
+        }
+
+        $displayedSet = [];
+        foreach ($displayedMatchedSkills as $skill) {
+            $label = trim((string) $skill);
+            if ($label === '') {
+                continue;
+            }
+
+            $displayedSet[mb_strtolower($label)] = true;
+        }
+
+        $unlisted = [];
+        $seenUnlisted = [];
+        foreach ($reasonMatchedSkills as $skill) {
+            $label = trim((string) $skill);
+            if ($label === '') {
+                continue;
+            }
+
+            $key = mb_strtolower($label);
+            if (isset($displayedSet[$key]) || isset($seenUnlisted[$key])) {
+                continue;
+            }
+
+            $seenUnlisted[$key] = true;
+            $unlisted[] = $label;
+
+            if (count($unlisted) >= $expectedCount) {
+                break;
+            }
+        }
+
+        return $unlisted;
     }
 
     private function toArraySkills(mixed $value): array

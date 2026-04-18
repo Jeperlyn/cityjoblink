@@ -616,6 +616,16 @@ class AuthController extends Controller
             $parsedSkills = $this->extractSkillsFromText($resumeText);
             $educationalAttainment = $this->extractEducationalAttainment($resumeText);
 
+            if ($resumeText !== '' && mb_strlen($resumeText) >= 400 && count($parsedSkills) <= 1) {
+                Log::warning('Resume parsing produced very few skills.', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'resume_original_name' => $originalResumeName,
+                    'resume_text_length' => mb_strlen($resumeText),
+                    'parsed_skill_count' => count($parsedSkills),
+                ]);
+            }
+
             $user->resume_path = 'storage/' . $storedPath;
             $user->resume_original_name = $originalResumeName;
             $user->resume_stored_name = $storedFileName;
@@ -871,24 +881,32 @@ class AuthController extends Controller
 
         $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
 
-        if ($extension === 'pdf') {
-            $parser = new PdfParser();
-            $pdf = $parser->parseFile($filePath);
+        try {
+            if ($extension === 'pdf') {
+                $parser = new PdfParser();
+                $pdf = $parser->parseFile($filePath);
 
-            return $this->normalizeText($pdf->getText());
-        }
+                return $this->normalizeText($pdf->getText());
+            }
 
-        if ($extension === 'docx') {
-            $zip = new ZipArchive();
-            if ($zip->open($filePath) === true) {
-                $documentXml = $zip->getFromName('word/document.xml');
-                $zip->close();
+            if ($extension === 'docx') {
+                $zip = new ZipArchive();
+                if ($zip->open($filePath) === true) {
+                    $documentXml = $zip->getFromName('word/document.xml');
+                    $zip->close();
 
-                if ($documentXml !== false) {
-                    $text = preg_replace('/<[^>]+>/', ' ', $documentXml);
-                    return $this->normalizeText(html_entity_decode((string) $text, ENT_QUOTES | ENT_XML1, 'UTF-8'));
+                    if ($documentXml !== false) {
+                        $text = preg_replace('/<[^>]+>/', ' ', $documentXml);
+                        return $this->normalizeText(html_entity_decode((string) $text, ENT_QUOTES | ENT_XML1, 'UTF-8'));
+                    }
                 }
             }
+        } catch (\Throwable $error) {
+            Log::warning('Resume text extraction failed.', [
+                'path' => $filePath,
+                'extension' => $extension,
+                'error' => $error->getMessage(),
+            ]);
         }
 
         return '';
@@ -1213,24 +1231,161 @@ class AuthController extends Controller
 
     private function extractSkillsFromText(string $text): array
     {
-        $dictionary = [
-            'php', 'laravel', 'javascript', 'typescript', 'react', 'vue', 'angular',
-            'node.js', 'nodejs', 'sql', 'postgresql', 'mysql', 'mongodb', 'html', 'css',
-            'tailwind', 'bootstrap', 'git', 'github', 'docker', 'kubernetes', 'python',
-            'java', 'c#', 'c++', 'aws', 'azure', 'api', 'rest', 'graphql', 'figma',
-            'communication', 'leadership', 'problem solving', 'project management'
-        ];
+        $normalizedText = $this->normalizeSkillText($text);
+        if ($normalizedText === '') {
+            return [];
+        }
 
-        $normalizedText = Str::lower($text);
-        $found = [];
+        $normalizedCompactText = str_replace(' ', '', $normalizedText);
+        $catalogSkills = $this->loadSkillCatalogForParsing();
+        $matchedSkills = [];
 
-        foreach ($dictionary as $skill) {
-            if (str_contains($normalizedText, Str::lower($skill))) {
-                $found[] = $skill;
+        foreach ($catalogSkills as $skillName) {
+            $canonicalSkill = trim((string) $skillName);
+            if ($canonicalSkill === '') {
+                continue;
+            }
+
+            $aliases = $this->skillAliasesForMatching($canonicalSkill);
+
+            foreach ($aliases as $alias) {
+                $normalizedAlias = $this->normalizeSkillText($alias);
+                if ($normalizedAlias === '') {
+                    continue;
+                }
+
+                $compactAlias = str_replace(' ', '', $normalizedAlias);
+                if (mb_strlen($compactAlias) < 3) {
+                    continue;
+                }
+
+                if ($this->containsSkillPhrase($normalizedText, $normalizedAlias)) {
+                    $matchedSkills[$canonicalSkill] = $canonicalSkill;
+                    break;
+                }
+
+                if (str_contains($normalizedCompactText, $compactAlias)) {
+                    $matchedSkills[$canonicalSkill] = $canonicalSkill;
+                    break;
+                }
             }
         }
 
-        return array_values(array_unique($found));
+        return array_values($matchedSkills);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function loadSkillCatalogForParsing(): array
+    {
+        return Cache::remember('resume-skill-catalog-v1', now()->addMinutes(10), function (): array {
+            try {
+                $catalogSkills = DB::table('skills')
+                    ->whereNotNull('skill_name')
+                    ->pluck('skill_name')
+                    ->map(static fn ($skill): string => trim((string) $skill))
+                    ->filter(static fn (string $skill): bool => $skill !== '')
+                    ->values()
+                    ->all();
+
+                $jobRequirementSkills = DB::table('jobs_catalog')
+                    ->whereNotNull('required_skills')
+                    ->pluck('required_skills')
+                    ->flatMap(static function ($rawSkills): array {
+                        if (is_array($rawSkills)) {
+                            return $rawSkills;
+                        }
+
+                        if (is_string($rawSkills) && trim($rawSkills) !== '') {
+                            $decoded = json_decode($rawSkills, true);
+
+                            return is_array($decoded) ? $decoded : [];
+                        }
+
+                        return [];
+                    })
+                    ->map(static fn ($skill): string => trim((string) $skill))
+                    ->filter(static fn (string $skill): bool => $skill !== '')
+                    ->values()
+                    ->all();
+
+                $skills = array_values(array_unique(array_merge($catalogSkills, $jobRequirementSkills)));
+
+                if (!empty($skills)) {
+                    return $skills;
+                }
+            } catch (\Throwable $error) {
+                Log::warning('Failed to load skills catalog for resume parsing.', [
+                    'error' => $error->getMessage(),
+                ]);
+            }
+
+            return [
+                'Inventory Management',
+                'Loading and Unloading',
+                'Inventory Support',
+                'Packing',
+                'Safety Compliance',
+                'Dependability',
+                'Leadership',
+                'Communication',
+                'Problem Solving',
+                'Teamwork',
+                'Customer Support',
+                'Warehouse Management',
+            ];
+        });
+    }
+
+    private function normalizeSkillText(string $value): string
+    {
+        $value = Str::lower($value);
+        $value = str_replace(['c++', 'c#'], ['cpp', 'csharp'], $value);
+        $value = str_replace(['&', '/', '-', '.', '(', ')'], ' ', $value);
+        $value = preg_replace('/[^a-z0-9\s]+/u', ' ', $value) ?? '';
+        $value = preg_replace('/\s+/u', ' ', $value) ?? '';
+
+        return trim($value);
+    }
+
+    private function containsSkillPhrase(string $normalizedText, string $normalizedSkill): bool
+    {
+        $escapedSkill = preg_quote($normalizedSkill, '/');
+
+        return preg_match('/(?:^|\s)' . $escapedSkill . '(?:\s|$)/u', $normalizedText) === 1;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function skillAliasesForMatching(string $skill): array
+    {
+        $aliases = [$skill];
+
+        if (preg_match('/^\s*([^\(]+)\(([^\)]+)\)\s*$/u', $skill, $matches) === 1) {
+            $aliases[] = trim((string) $matches[1]);
+            $aliases[] = trim((string) $matches[2]);
+
+            foreach (preg_split('/[,;]+/u', (string) $matches[2]) ?: [] as $item) {
+                $part = trim((string) $item);
+                if ($part !== '') {
+                    $aliases[] = $part;
+                }
+            }
+        }
+
+        if (str_contains($skill, 'Node.js')) {
+            $aliases[] = 'Nodejs';
+            $aliases[] = 'Node JS';
+        }
+
+        if (str_contains($skill, 'C/C++')) {
+            $aliases[] = 'C++';
+            $aliases[] = 'C Plus Plus';
+        }
+
+        return array_values(array_unique(array_filter(array_map('trim', $aliases), static fn ($value): bool => $value !== '')));
     }
 
     private function extractEducationalAttainment(string $text): ?string

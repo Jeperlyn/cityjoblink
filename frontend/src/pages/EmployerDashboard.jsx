@@ -105,6 +105,33 @@ const getMatchTextColorClass = (score) => {
     return 'text-red-500';
 };
 
+const buildBalancedSkillPanels = (application) => {
+    const app = application || {};
+    const evidence = app.matchEvidence || {};
+
+    const mergedMatchedSkills = Array.from(new Set([
+        ...(Array.isArray(app.matchedSkills) ? app.matchedSkills : []),
+        ...(Array.isArray(evidence.matched_skill_keywords) ? evidence.matched_skill_keywords : []),
+        ...(Array.isArray(evidence.matched_title_keywords) ? evidence.matched_title_keywords : []),
+        ...(Array.isArray(evidence.unlisted_matched_skills) ? evidence.unlisted_matched_skills : []),
+    ])).filter(Boolean);
+
+    const mergedMissingSkills = Array.from(new Set([
+        ...(Array.isArray(app.missingSkills) ? app.missingSkills : []),
+        ...(Array.isArray(evidence.missing_skill_keywords) ? evidence.missing_skill_keywords : []),
+    ])).filter(Boolean);
+
+    const MISSING_DISPLAY_LIMIT = 2;
+
+    return {
+        matched: mergedMatchedSkills,
+        missing: mergedMissingSkills.slice(0, MISSING_DISPLAY_LIMIT),
+        totalMatched: mergedMatchedSkills.length,
+        totalMissing: mergedMissingSkills.length,
+        hiddenMissingCount: Math.max(0, mergedMissingSkills.length - MISSING_DISPLAY_LIMIT),
+    };
+};
+
 const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, onUpdateJob, onUpdateProfile, onUploadDocs, onOpenChat, onUpdateStatus, notify, jobFairs = [], onRegisterJobFair, onWithdrawJobFair }) => {
     const [activeTab, setActiveTab] = useState('overview');
 
@@ -665,6 +692,8 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
         () => applications.filter((app) => app.status === 'Pending').length,
         [applications]
     );
+
+    const insightSkillView = useMemo(() => buildBalancedSkillPanels(insightData?.app), [insightData]);
 
     const isProfileInfoComplete = profile?.industry && (profile?.address || profile?.companyAddress || profile?.company_address);
 
@@ -1520,7 +1549,7 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                 <div className="bg-green-50/50 p-5 rounded-xl border border-green-100">
                                     <h4 className="text-sm font-bold text-green-800 mb-3 flex items-center gap-2"><CheckCircle size={16}/> Matched Skills</h4>
                                     <div className="flex flex-wrap gap-2">
-                                        {Array.isArray(insightData.app?.matchedSkills) && insightData.app.matchedSkills.length > 0 ? insightData.app.matchedSkills.map((s, i) => (
+                                        {insightSkillView.matched.length > 0 ? insightSkillView.matched.map((s, i) => (
                                             <span key={i} className="bg-white text-green-700 text-xs font-bold px-2.5 py-1 rounded shadow-sm border border-green-200">{s}</span>
                                         )) : <span className="text-xs text-gray-500">No matches</span>}
                                     </div>
@@ -1528,19 +1557,18 @@ const EmployerDashboard = ({ profile, jobs, applications, seekers, onPostJob, on
                                 <div className="bg-red-50/50 p-5 rounded-xl border border-red-100">
                                     <h4 className="text-sm font-bold text-red-800 mb-3 flex items-center gap-2"><XCircle size={16}/> Missing Skills</h4>
                                     <div className="flex flex-wrap gap-2">
-                                        {Array.isArray(insightData.app?.missingSkills) && insightData.app.missingSkills.length > 0 ? insightData.app.missingSkills.map((s, i) => (
+                                        {insightSkillView.missing.length > 0 ? insightSkillView.missing.map((s, i) => (
                                             <span key={i} className="bg-white text-red-700 text-xs font-bold px-2.5 py-1 rounded shadow-sm border border-red-200">{s}</span>
                                         )) : <span className="text-xs text-gray-500">None missing</span>}
                                     </div>
+                                    {insightSkillView.hiddenMissingCount > 0 && (
+                                        <p className="text-xs text-red-600 mt-3">+{insightSkillView.hiddenMissingCount} more missing skill(s)</p>
+                                    )}
+                                    {insightSkillView.totalMissing > insightSkillView.missing.length && (
+                                        <p className="text-xs text-gray-500 mt-1">Showing top missing skills for cleaner comparison.</p>
+                                    )}
                                 </div>
                             </div>
-
-                            {insightData.app?.matchReasons && (
-                                <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100">
-                                    <h4 className="text-sm font-bold text-blue-800 mb-2 flex items-center gap-2"><Info size={16}/> System Reasoning</h4>
-                                    <p className="text-sm text-gray-700">{insightData.app.matchReasons}</p>
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>

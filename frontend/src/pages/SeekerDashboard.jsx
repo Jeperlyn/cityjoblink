@@ -174,7 +174,32 @@ export const JobDetailsPage = ({ job, matchData, onBack }) => {
   
   const matches = matchData?.matches || [];
   const score = matchData?.score || 0;
-  const missingSkills = (job.requiredSkills || []).filter(skill => !matches.includes(skill));
+  const missingSkills = Array.isArray(matchData?.missingSkills)
+    ? matchData.missingSkills
+    : (job.requiredSkills || []).filter(skill => !matches.includes(skill));
+  const unlistedMatchedSkills = Array.isArray(matchData?.matchEvidence?.unlisted_matched_skills)
+    ? matchData.matchEvidence.unlisted_matched_skills.filter(Boolean)
+    : [];
+  const matchedSkillsFromEvidence = matchData?.matchedSkillKeywords || matchData?.matchEvidence?.matched_skill_keywords || [];
+  const missingSkillsFromEvidence = matchData?.missingSkillKeywords || matchData?.matchEvidence?.missing_skill_keywords || missingSkills;
+  const matchedFromTitle = matchData?.matchedTitleKeywords || matchData?.matchEvidence?.matched_title_keywords || [];
+
+  const mergedMatchedSkills = Array.from(new Set([
+    ...(Array.isArray(matches) ? matches : []),
+    ...(Array.isArray(matchedSkillsFromEvidence) ? matchedSkillsFromEvidence : []),
+    ...(Array.isArray(matchedFromTitle) ? matchedFromTitle : []),
+    ...(Array.isArray(unlistedMatchedSkills) ? unlistedMatchedSkills : []),
+  ])).filter(Boolean);
+
+  const mergedMissingSkills = Array.from(new Set([
+    ...(Array.isArray(missingSkills) ? missingSkills : []),
+    ...(Array.isArray(missingSkillsFromEvidence) ? missingSkillsFromEvidence : []),
+  ])).filter(Boolean);
+
+  const MISSING_DISPLAY_LIMIT = 2;
+  const displayedMatchedSkills = mergedMatchedSkills;
+  const displayedMissingSkills = mergedMissingSkills.slice(0, MISSING_DISPLAY_LIMIT);
+  const hiddenMissingSkillsCount = Math.max(0, mergedMissingSkills.length - displayedMissingSkills.length);
 
   return (
     <div className="max-w-4xl mx-auto p-6 animate-in fade-in duration-300">
@@ -198,13 +223,14 @@ export const JobDetailsPage = ({ job, matchData, onBack }) => {
 
         <EmployerLinks job={job} containerClassName="px-8 md:px-10 pt-8" />
 
-        <div className="p-8 md:p-10 grid md:grid-cols-2 gap-6">
+        <div className="p-8 md:p-10 space-y-6">
+          <div className="grid md:grid-cols-2 gap-6">
           <div className="bg-green-50/50 p-6 rounded-2xl border border-green-100">
             <h4 className="flex items-center gap-2 text-sm font-bold text-green-700 mb-4">
               <CheckCircle size={18}/> Matched Skills
             </h4>
             <div className="flex flex-wrap gap-2">
-              {matches.length > 0 ? matches.map((s, i) => (
+              {displayedMatchedSkills.length > 0 ? displayedMatchedSkills.map((s, i) => (
                 <span key={i} className="bg-white text-gray-800 text-sm font-medium px-3 py-1.5 rounded-lg border border-green-200 shadow-sm">{s}</span>
               )) : <p className="text-sm text-gray-500 italic">No matches found</p>}
             </div>
@@ -215,10 +241,17 @@ export const JobDetailsPage = ({ job, matchData, onBack }) => {
               <XCircle size={18}/> Missing Skills
             </h4>
             <div className="flex flex-wrap gap-2">
-              {missingSkills.length > 0 ? missingSkills.map((s, i) => (
+              {displayedMissingSkills.length > 0 ? displayedMissingSkills.map((s, i) => (
                 <span key={i} className="bg-white text-gray-600 text-sm font-medium px-3 py-1.5 rounded-lg border border-red-200">{s}</span>
               )) : <p className="text-sm text-gray-500 italic">No missing skills</p>}
             </div>
+            {hiddenMissingSkillsCount > 0 && (
+              <p className="text-xs text-red-600 mt-3">+{hiddenMissingSkillsCount} more missing skill(s)</p>
+            )}
+            {mergedMissingSkills.length > displayedMissingSkills.length && (
+              <p className="text-xs text-gray-500 mt-1">Showing top missing skills for cleaner comparison.</p>
+            )}
+          </div>
           </div>
         </div>
       </div>

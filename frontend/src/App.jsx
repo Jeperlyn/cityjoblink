@@ -181,6 +181,11 @@ const mapBackendEmployerApplication = (app) => ({
     missingSkills: app.missing_skills || [],
     educationMatch: app.education_match,
     matchReasons: app.match_reasons || '',
+    matchEvidence: app.match_evidence || null,
+    matchedSkillKeywords: app.match_evidence?.matched_skill_keywords || [],
+    missingSkillKeywords: app.match_evidence?.missing_skill_keywords || [],
+    matchedTitleKeywords: app.match_evidence?.matched_title_keywords || [],
+    missingTitleKeywords: app.match_evidence?.missing_title_keywords || [],
     seekerIsPriorityVerified: !!app.seeker_is_priority_verified,
     seekerIsQcResident: !!app.seeker_is_qc_resident,
 });
@@ -771,6 +776,14 @@ const App = () => {
             score: data.score || 0,
             matches: data.matched_skills || [],
             missingSkills: data.missing_skills || [],
+            requiredSkillsCount: data.required_skills_count || 0,
+            userSkillsCount: data.user_skills_count || 0,
+            matchReasons: data.match_reasons || '',
+            matchEvidence: data.match_evidence || null,
+            matchedSkillKeywords: data.match_evidence?.matched_skill_keywords || [],
+            missingSkillKeywords: data.match_evidence?.missing_skill_keywords || [],
+            matchedTitleKeywords: data.match_evidence?.matched_title_keywords || [],
+            missingTitleKeywords: data.match_evidence?.missing_title_keywords || [],
         };
     };
 
